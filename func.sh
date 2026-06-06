@@ -1,221 +1,427 @@
 #!/bin/bash
-#Changelog: 
-# 15/Nov/2016: Criação do arquivo func.sh (Fabio Soares Schmidt)
+################################################################################
+# Z2Z Helper Functions Library
+# Changelog:
+#   2016-11-15: Initial creation (Fabio Soares Schmidt)
+#   2025-06-06: Optimization, English translation, ShellCheck compliance
+################################################################################
 
-#FUNCOES E VARIAVEIS PARA O UTILITARIO
-NORMAL_TEXT="printf '\e[1;34m%-6s\e[m\n'" #Azul
-ERROR_TEXT="printf '\e[1;31m%s\e[0m\n'" #Vermelho
-INFO_TEXT="printf '\e[1;33m%s\e[0m\n'" #Amarelo
-CHOICE_TEXT="printf '\e[1;32m%s\e[0m\n'" #Verde
-NO_COLOUR="'\e[0m'" #Branco
-MAILBOX_LIST=`zmprov -l gaa | grep -v -E "admin|virus-|ham.|spam.|galsync"` #TODAS AS CONTAS DO ZIMBRA, EXCETO CONTAS DE SISTEMA
-WORKDIR=`pwd`"/export"
-SINGLE_MAILBOX=1
-MAILBOX_SERVERS="`zmprov gas mailbox | wc -l`"
+set -euo pipefail
 
-##
+# ============================================================================
+# Color Output Functions
+# ============================================================================
 
-separator_char()
-{
-echo ++++++++++++++++++++++++++++++++++++++++
-}
-##
+# ANSI color codes for terminal output
+readonly COLOR_BLUE='\e[1;34m'
+readonly COLOR_RED='\e[1;31m'
+readonly COLOR_YELLOW='\e[1;33m'
+readonly COLOR_GREEN='\e[1;32m'
+readonly COLOR_RESET='\e[0m'
 
-test_exec()
-{
-read -p "Continuar (sim/nao)?" choice
-    case "$choice" in
-     y|Y|yes|s|S|sim ) $NORMAL_TEXT "Iniciando utilitario";;
-     n|N|no|nao ) exit 0;;
-     * ) test_exec ;;
-esac
+# Output text in blue (normal information)
+print_normal() {
+    printf "%b%-6s%b\n" "${COLOR_BLUE}" "$*" "${COLOR_RESET}"
 }
 
-##
-
-Check_Directory()
-{
-
-if [ ! -d "$DIRETORIO" ]; then
-	 $ERROR_TEXT "ERRO: O diretorio $DIRETORIO nao existe, abortando execucao."
-	 exit 1 
- else
-	 $INFO_TEXT "OK: Diretorio $DIRETORIO existente."
-
-fi
+# Output text in red (error messages)
+print_error() {
+    printf "%b%s%b\n" "${COLOR_RED}" "$*" "${COLOR_RESET}" >&2
 }
 
-##
+# Output text in yellow (informational)
+print_info() {
+    printf "%b%s%b\n" "${COLOR_YELLOW}" "$*" "${COLOR_RESET}"
+}
 
-Check_Command()
-{
+# Output text in green (confirmation/choice)
+print_choice() {
+    printf "%b%s%b\n" "${COLOR_GREEN}" "$*" "${COLOR_RESET}"
+}
 
-for i in "${COMANDOS[@]}"
-    do
-    # do whatever on $i
-    type $i >/dev/null 2>/dev/null
-      if [ $? == 0 ]; then
-	 	$INFO_TEXT "OK: comando $i existente."
-		separator_char
-       else
-    	$ERROR_TEXT "ERRO: O comando $i nao foi encontrado, abortando execucao."
-    	exit 1
+# ============================================================================
+# Utility Functions
+# ============================================================================
+
+# Display separator line
+separator_char() {
+    echo "+++++++++++++++++++++++++++++++++++++++++++++++++"
+}
+
+# Prompt user for confirmation
+test_exec() {
+    local choice
+    read -r -p "Continue (yes/no)? " choice
+    case "${choice}" in
+        y|Y|yes|s|S|sim)
+            print_normal "Starting utility"
+            ;;
+        n|N|no|nao)
+            exit 0
+            ;;
+        *)
+            test_exec
+            ;;
+    esac
+}
+
+# ============================================================================
+# Directory & File Validation
+# ============================================================================
+
+# Check if directory exists and is accessible
+check_directory() {
+    local dir="$1"
+    if [[ ! -d "${dir}" ]]; then
+        print_error "ERROR: Directory '${dir}' does not exist. Aborting."
+        exit 1
+    else
+        print_info "OK: Directory '${dir}' exists."
     fi
-done
-
-
 }
 
-##
-
-Check_Maibox()
-{
-
-if (($MAILBOX_SERVERS > $MAILBOX_SERVERS)); then
-	$ERROR_TEXT "CUIDADO: A versao atual foi desenvolvida para ambientes Single Server ou com apenas um servidor mailbox."
-	$ERROR_TEXT "CUIDADO: Para ambientes com mais de um servidor Mailbox sera necessario alterar os arquivos exportados se desejar renomear os servidores"
-else
-	$NORMAL_TEXT "OK: Ambiente possui apenas um servidor Mailbox"
-fi
+# Check if required commands are available
+check_command() {
+    local -a commands=("$@")
+    for cmd in "${commands[@]}"; do
+        if ! type "${cmd}" &>/dev/null; then
+            print_error "ERROR: Command '${cmd}' not found. Aborting."
+            exit 1
+        fi
+        print_info "OK: Command '${cmd}' available."
+        separator_char
+    done
 }
 
-##
+# ============================================================================
+# Zimbra Environment Checks
+# ============================================================================
 
-Enter_New_Hostname()
-{
-
-read -p "Informe o novo hostname do servidor Zimbra: " userInput
-
-
-if [[ -z "$userInput" ]]; then
-      printf '%s\n' ""
-      Enter_New_Hostname
-     else
-	  TEST_FQDN=`echo $userInput | awk -F. '{print NF}'`
-	        if [ ! $TEST_FQDN -ge 2 ]; then
-		       $ERROR_TEXT "ERRO: O hostname informado nao e um FQDN valido"
-		       Enter_New_Hostname
-			fi
-	  OLD_HOSTNAME="$zimbra_server_hostname"
-	  NEW_HOSTNAME="$userInput"
-	  $CHOICE_TEXT "Hostname informado: $NEW_HOSTNAME"
-fi
+# Verify script is running as Zimbra user
+run_as_zimbra() {
+    if [[ "$(whoami)" != "zimbra" ]]; then
+        print_error "ERROR: This script must be executed as the Zimbra user."
+        exit 1
+    else
+        print_info "OK: Running as Zimbra user."
+    fi
 }
 
-##
-
-Run_as_Zimbra()
-{
-
-if [ "$(whoami)" == "zimbra" ]; then
-    $INFO_TEXT "OK: Executando como Zimbra."
-   else
-    $ERROR_TEXT "ERRO: Esse comando deve ser executado como Zimbra."
-    exit 1
-fi
+# Validate single server or single mailbox environment
+check_mailbox() {
+    local mailbox_servers
+    mailbox_servers=$(zmprov gas mailbox 2>/dev/null | wc -l)
+    
+    if (( mailbox_servers > 1 )); then
+        print_error "WARNING: Current version is designed for single server or single mailbox environments."
+        print_error "WARNING: For environments with multiple mailbox servers, manual modifications may be required."
+    else
+        print_normal "OK: Environment has single mailbox server."
+    fi
 }
 
-##
+# ============================================================================
+# Hostname Management
+# ============================================================================
 
-Replace_Hostname()
-{
-	#$INFO_TEXT "Modificar hostname"
-read -p "O Hostname do servidor do Zimbra sera alterado (sim/nao)?" choice
-   case "$choice" in
-   y|Y|yes|s|S|sim ) 
-    $CHOICE_TEXT "O Hostname do servidor sera alterado." 
-	Enter_New_Hostname 
-	Execute_Replace_Hostname 
-	;;
-   n|N|no|nao ) $CHOICE_TEXT "Sera mantido o hostname do servidor.";;
-   * ) Replace_Hostname ;;
-esac
+# Prompt for new hostname with FQDN validation
+enter_new_hostname() {
+    local user_input
+    local fqdn_parts
+    
+    read -r -p "Enter the new Zimbra server hostname: " user_input
+    
+    if [[ -z "${user_input}" ]]; then
+        enter_new_hostname
+        return
+    fi
+    
+    fqdn_parts=$(echo "${user_input}" | awk -F. '{print NF}')
+    
+    if (( fqdn_parts < 2 )); then
+        print_error "ERROR: Provided hostname is not a valid FQDN."
+        enter_new_hostname
+        return
+    fi
+    
+    export NEW_HOSTNAME="${user_input}"
+    print_choice "Hostname set to: ${NEW_HOSTNAME}"
 }
 
-##
-
-Execute_Replace_Hostname()
-{
-sed -i s/$OLD_HOSTNAME/$NEW_HOSTNAME/g $DESTINO/CONTAS.ldif
-sed -i s/$OLD_HOSTNAME/$NEW_HOSTNAME/g $DESTINO/LISTAS.ldif
+# Interactive hostname replacement prompt
+replace_hostname() {
+    local destino="$1"
+    local choice
+    
+    read -r -p "Replace Zimbra server hostname (yes/no)? " choice
+    case "${choice}" in
+        y|Y|yes|s|S|sim)
+            print_choice "Hostname will be changed."
+            local old_hostname="${zimbra_server_hostname}"
+            enter_new_hostname
+            sed -i "s/${old_hostname}/${NEW_HOSTNAME}/g" "${destino}/CONTAS.ldif"
+            sed -i "s/${old_hostname}/${NEW_HOSTNAME}/g" "${destino}/LISTAS.ldif"
+            print_info "Hostname replacement completed."
+            ;;
+        n|N|no|nao)
+            print_choice "Original server hostname will be maintained."
+            ;;
+        *)
+            replace_hostname "${destino}"
+            ;;
+    esac
 }
 
-##
+# ============================================================================
+# Mailbox Export Configuration
+# ============================================================================
 
-export_Mailboxes()
-{
-read -p "Deseja exportar as caixas postais (sim/nao)?" choice
-    case "$choice" in
-    y|Y|yes|s|S|sim ) $CHOICE_TEXT "Sera criada a RELACAO para o export FULL de todas as contas do sistema.";;
-    n|N|no|nao ) $CHOICE_TEXT "Nao sera efetuado o export das caixas postais. Execucao abortada pelo usuario." ; exit 0 ;;
-    * ) export_Mailboxes ;;
-esac
+# Prompt whether to export mailboxes
+export_mailboxes() {
+    local choice
+    read -r -p "Export mailboxes (yes/no)? " choice
+    case "${choice}" in
+        y|Y|yes|s|S|sim)
+            print_choice "Creating mailbox export list for all accounts."
+            ;;
+        n|N|no|nao)
+            print_choice "Mailbox export skipped. Execution aborted by user."
+            exit 0
+            ;;
+        *)
+            export_mailboxes
+            ;;
+    esac
 }
 
-##
-
-Export_Dest()
-{
-read -p "Informe qual sera o diretorio utilizado para exportacao: " userInput
-if [[ -z "$userInput" ]]; then
-    $ERROR_TEXT "Nenhum diretorio informado"
-    Export_Dest
-       else
-	EXPORT_PATH="$userInput"   
-    $CHOICE_TEXT "Diretorio informado:" "$userInput"
-fi
+# Prompt for export destination directory
+get_export_destination() {
+    local user_input
+    read -r -p "Enter export directory path: " user_input
+    
+    if [[ -z "${user_input}" ]]; then
+        print_error "No directory specified."
+        get_export_destination
+        return
+    fi
+    
+    if [[ ! -d "${user_input}" ]]; then
+        mkdir -p "${user_input}" || {
+            print_error "ERROR: Cannot create directory ${user_input}"
+            get_export_destination
+            return
+        }
+    fi
+    
+    print_choice "Export directory: ${user_input}"
+    echo "${user_input}"
 }
 
-##
+# ============================================================================
+# LDAP Export Functions
+# ============================================================================
 
-execute_Export_Full()
-{
-		 $NORMAL_TEXT "INBOX: Criando arquivo com as contas relacionadas para exportacao:" 
-		 $INFO_TEXT   "$WORKDIR/script_export_FULL.sh"
-         for mailbox in $( echo $MAILBOX_LIST ); do
-		 echo "zmmailbox -z -m $mailbox -t 0 getRestURL \"//?fmt=tgz\" > $EXPORT_PATH/$mailbox.tgz" >> $WORKDIR/script_export_FULL.sh #comando para export full
-		 chmod +x $WORKDIR/script_export_FULL.sh
-		 echo "zmmailbox -z -m $mailbox -t 0 postRestURL \"//?fmt=tgz&resolve=skip\" $EXPORT_PATH/$mailbox.tgz" >> $WORKDIR/script_import_FULL.sh #comando para import full
-		 chmod +x $WORKDIR/script_import_FULL.sh
-done
+# Export Class of Service (COS) from LDAP
+export_cos() {
+    local hostname="$1"
+    local binddn="$2"
+    local destino="$3"
+    local password="${zimbra_ldap_password:-}"
+    
+    print_normal "EXPORTING CLASS OF SERVICE"
+    separator_char
+    
+    ldapsearch -x \
+        -H "ldap://${hostname}" \
+        -D "${binddn}" \
+        -w "${password}" \
+        -b '' \
+        -LLL "(objectclass=zimbraCOS)" > "${destino}/COS.ldif" || {
+        print_error "ERROR: Failed to export COS"
+        exit 1
+    }
+    
+    print_info "CLASS OF SERVICE exported successfully: ${destino}/COS.ldif"
 }
 
-##
-
-execute_Export_Trash()
-{
-		 $NORMAL_TEXT "LIXEIRA: Criando arquivo com as contas relacionadas para exportacao:"
-         $INFO_TEXT   "$WORKDIR/script_export_TRASH.sh"
-        for i in $( echo $MAILBOX_LIST ); do
-		echo "zmmailbox -z -m $i -t 0 gru \"//Trash?fmt=tgz\" > $EXPORT_PATH/$i-Trash.tgz" >> $WORKDIR/script_export_TRASH.sh
-		chmod +x $WORKDIR/script_export_TRASH.sh
-		echo "zmmailbox -z -m $i -t 0 postRestURL \"//?fmt=tgz&resolve=skip\" $EXPORT_PATH/$i-Trash.tgz" >> $WORKDIR/script_import_TRASH.sh
-		chmod +x $WORKDIR/script_import_TRASH.sh
-done
+# Export user accounts (excluding system accounts)
+export_accounts() {
+    local hostname="$1"
+    local binddn="$2"
+    local destino="$3"
+    local password="${zimbra_ldap_password:-}"
+    
+    print_normal "EXPORTING USER ACCOUNTS"
+    separator_char
+    
+    ldapsearch -x \
+        -H "ldap://${hostname}" \
+        -D "${binddn}" \
+        -w "${password}" \
+        -b '' \
+        -LLL '(&(!(zimbraIsSystemResource=TRUE))(objectClass=zimbraAccount))' > "${destino}/CONTAS.ldif" || {
+        print_error "ERROR: Failed to export accounts"
+        exit 1
+    }
+    
+    print_info "USER ACCOUNTS exported successfully: ${destino}/CONTAS.ldif"
 }
 
-##
-
-execute_Export_Junk()
-{
-
-	     $NORMAL_TEXT "SPAM: Criando arquivo com as contas relacionadas para exportacao:"
-         $INFO_TEXT   "$WORKDIR/script_export_JUNK.sh"
-		 for i in $( echo $MAILBOX_LIST ); do
-		 echo "zmmailbox -z -m $i -t 0 gru \"//Junk?fmt=tgz\" > $EXPORT_PATH/$i-Junk.tgz" >> $WORKDIR/script_export_JUNK.sh
-		 chmod +x $WORKDIR/script_export_JUNK.sh
-		 echo "zmmailbox -z -m $i -t 0 postRestURL \"//?fmt=tgz&resolve=skip\" $EXPORT_PATH/$i-Junk.tgz" >> $WORKDIR/script_import_JUNK.sh
-		 chmod +x $WORKDIR/script_import_JUNK.sh
-done
-
+# Export mail aliases
+export_aliases() {
+    local hostname="$1"
+    local binddn="$2"
+    local destino="$3"
+    local workdir="$4"
+    local password="${zimbra_ldap_password:-}"
+    
+    print_normal "EXPORTING MAIL ALIASES"
+    separator_char
+    
+    # Get list of aliases
+    ldapsearch -x \
+        -H "ldap://${hostname}" \
+        -D "${binddn}" \
+        -w "${password}" \
+        -b '' \
+        -LLL '(&(!(uid=root))(!(uid=postmaster))(objectclass=zimbraAlias))' uid | \
+        grep '^uid' | \
+        awk '{print $2}' > "${workdir}/lista_contas.ldif" || {
+        print_error "ERROR: Failed to get alias list"
+        return
+    }
+    
+    # Export each alias
+    > "${destino}/APELIDOS.ldif"  # Create empty file
+    while IFS= read -r mail; do
+        ldapsearch -x \
+            -H "ldap://${hostname}" \
+            -D "${binddn}" \
+            -w "${password}" \
+            -b '' \
+            -LLL "(&(uid=${mail})(objectclass=zimbraAlias))" >> "${destino}/APELIDOS.ldif" || {
+            print_error "WARNING: Failed to export alias ${mail}"
+        }
+    done < "${workdir}/lista_contas.ldif"
+    
+    print_info "MAIL ALIASES exported successfully: ${destino}/APELIDOS.ldif"
 }
 
-##
-
-Clear_Workdir()
-{
-rm -f $WORKDIR/lista_contas.ldif
-rm -fr $WORKDIR/alias
+# Export distribution lists
+export_distribution_lists() {
+    local hostname="$1"
+    local binddn="$2"
+    local destino="$3"
+    local password="${zimbra_ldap_password:-}"
+    
+    print_normal "EXPORTING DISTRIBUTION LISTS"
+    separator_char
+    
+    ldapsearch -x \
+        -H "ldap://${hostname}" \
+        -D "${binddn}" \
+        -w "${password}" \
+        -b '' \
+        -LLL "(|(objectclass=zimbraGroup)(objectclass=zimbraDistributionList))" > "${destino}/LISTAS.ldif" || {
+        print_error "ERROR: Failed to export distribution lists"
+        exit 1
+    }
+    
+    print_info "DISTRIBUTION LISTS exported successfully: ${destino}/LISTAS.ldif"
 }
 
-##
+# ============================================================================
+# Mailbox Export Script Generation
+# ============================================================================
+
+# Build full mailbox export script
+execute_export_full() {
+    local export_path="$1"
+    local workdir="$2"
+    local script_file="${workdir}/script_export_FULL.sh"
+    local import_script="${workdir}/script_import_FULL.sh"
+    
+    print_normal "INBOX: Creating mailbox export script:"
+    print_info "${script_file}"
+    
+    # Initialize scripts
+    > "${script_file}"
+    > "${import_script}"
+    chmod +x "${script_file}" "${import_script}"
+    
+    # Get list of mailboxes
+    local mailbox_list
+    mailbox_list=$(zmprov -l gaa 2>/dev/null | grep -v -E "admin|virus-|ham\.|spam\.|galsync" || true)
+    
+    # Generate export/import commands
+    while IFS= read -r mailbox; do
+        [[ -z "${mailbox}" ]] && continue
+        echo "zmmailbox -z -m '${mailbox}' -t 0 getRestURL \"//?fmt=tgz\" > '${export_path}/${mailbox}.tgz'" >> "${script_file}"
+        echo "zmmailbox -z -m '${mailbox}' -t 0 postRestURL \"//?fmt=tgz&resolve=skip\" '${export_path}/${mailbox}.tgz'" >> "${import_script}"
+    done <<< "${mailbox_list}"
+}
+
+# Build trash folder export script
+execute_export_trash() {
+    local export_path="$1"
+    local workdir="$2"
+    local script_file="${workdir}/script_export_TRASH.sh"
+    local import_script="${workdir}/script_import_TRASH.sh"
+    
+    print_normal "TRASH: Creating mailbox trash export script:"
+    print_info "${script_file}"
+    
+    # Initialize scripts
+    > "${script_file}"
+    > "${import_script}"
+    chmod +x "${script_file}" "${import_script}"
+    
+    # Get list of mailboxes
+    local mailbox_list
+    mailbox_list=$(zmprov -l gaa 2>/dev/null | grep -v -E "admin|virus-|ham\.|spam\.|galsync" || true)
+    
+    # Generate export/import commands
+    while IFS= read -r mailbox; do
+        [[ -z "${mailbox}" ]] && continue
+        echo "zmmailbox -z -m '${mailbox}' -t 0 gru \"//Trash?fmt=tgz\" > '${export_path}/${mailbox}-Trash.tgz'" >> "${script_file}"
+        echo "zmmailbox -z -m '${mailbox}' -t 0 postRestURL \"//?fmt=tgz&resolve=skip\" '${export_path}/${mailbox}-Trash.tgz'" >> "${import_script}"
+    done <<< "${mailbox_list}"
+}
+
+# Build junk/spam folder export script
+execute_export_junk() {
+    local export_path="$1"
+    local workdir="$2"
+    local script_file="${workdir}/script_export_JUNK.sh"
+    local import_script="${workdir}/script_import_JUNK.sh"
+    
+    print_normal "SPAM: Creating mailbox junk export script:"
+    print_info "${script_file}"
+    
+    # Initialize scripts
+    > "${script_file}"
+    > "${import_script}"
+    chmod +x "${script_file}" "${import_script}"
+    
+    # Get list of mailboxes
+    local mailbox_list
+    mailbox_list=$(zmprov -l gaa 2>/dev/null | grep -v -E "admin|virus-|ham\.|spam\.|galsync" || true)
+    
+    # Generate export/import commands
+    while IFS= read -r mailbox; do
+        [[ -z "${mailbox}" ]] && continue
+        echo "zmmailbox -z -m '${mailbox}' -t 0 gru \"//Junk?fmt=tgz\" > '${export_path}/${mailbox}-Junk.tgz'" >> "${script_file}"
+        echo "zmmailbox -z -m '${mailbox}' -t 0 postRestURL \"//?fmt=tgz&resolve=skip\" '${export_path}/${mailbox}-Junk.tgz'" >> "${import_script}"
+    done <<< "${mailbox_list}"
+}
+
+# ============================================================================
+# Cleanup Functions
+# ============================================================================
+
+# Clean temporary files from export directory
+clear_workdir() {
+    local workdir="$1"
+    rm -f "${workdir}/lista_contas.ldif"
+    rm -rf "${workdir:?}/alias"
+}
