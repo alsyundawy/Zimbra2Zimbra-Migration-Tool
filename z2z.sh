@@ -1,129 +1,137 @@
 #!/bin/bash
-###   Z2Z - Mantido por BKTECH <http://www.bktech.com.br>                         ###
-###   Copyright (C) 2016  Fabio Soares Schmidt <fabio@respirandolinux.com.br>     ###
-###   PARA INFORMACOES SOBRE A FERRAMENTA, FAVOR LER OS ARQUIVOS README E INSTALL ###
-
-###   VERSAO 1.0.2
-
-#CARREGA FUNCOES UTILIZADAS PELO SCRIPT
-. func.sh
- 
-#INICIAR Z2Z
-clear
-cat banner.txt
-echo ""
+################################################################################
+# Z2Z - Zimbra to Zimbra Migration Tool
+# Maintained by BKTECH <http://www.bktech.com.br>
+# Copyright (C) 2016  Fabio Soares Schmidt <fabio@respirandolinux.com.br>
+# For more information, please read the README and INSTALL files
 #
+# Version: 1.0.3 (Optimized & English-translated)
+# License: MIT/GPL
+################################################################################
 
-#CONFIRMA SE ESTA SENDO EXECUTADO COM O USUARIO ZIMBRA
-Run_as_Zimbra
-separator_char
+set -euo pipefail  # Exit on error, undefined variables, and pipe failures
 
-#CONFIRMA SE O USUARIO DESEJA CONTINUAR COM A EXECUCAO
-test_exec
-separator_char
+# Script directory for relative imports
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-#TESTES PARA EXECUCAO DO UTILITARIO
+# Source helper functions
+if [[ ! -f "${SCRIPT_DIR}/func.sh" ]]; then
+    echo "ERROR: func.sh not found in ${SCRIPT_DIR}" >&2
+    exit 1
+fi
+# shellcheck source=func.sh
+source "${SCRIPT_DIR}/func.sh"
 
-#COMANDOS NECESSARIOS
-declare -a COMANDOS=('ldapsearch' 'zmmailbox' 'zmshutil' 'zmprov');
+# Banner display
+main() {
+    clear
+    if [[ -f "${SCRIPT_DIR}/banner.txt" ]]; then
+        cat "${SCRIPT_DIR}/banner.txt"
+    fi
+    echo ""
 
-Check_Command
-separator_char
+    # Verify execution as Zimbra user
+    run_as_zimbra
+    separator_char
 
-#VALIDA AMBIENTE SINGLE SERVER OU SINGLE MAILBOX
-Check_Maibox
-separator_char
+    # Confirm user wants to continue
+    test_exec
+    separator_char
 
-#DEFININDO VARIAVEIS DE AMBIENTE DO ZIMBRA
-source ~/bin/zmshutil
-zmsetvars
+    # Required commands for execution
+    declare -a REQUIRED_COMMANDS=('ldapsearch' 'zmmailbox' 'zmshutil' 'zmprov')
+    check_command "${REQUIRED_COMMANDS[@]}"
+    separator_char
 
+    # Validate single server or single mailbox environment
+    check_mailbox
+    separator_char
 
-#DEFININDO NOME DO SERVIDOR COM VARIAVEL DO AMBIENTE
-ZIMBRA_HOSTNAME=$zimbra_server_hostname
-#DEFININDO USUARIO PARA BIND NO LDAP DO ZIMBRA COM VARIAVEL DO AMBIENE
-ZIMBRA_BINDDN=$zimbra_ldap_userdn
+    # Source Zimbra environment variables
+    if [[ -f ~/bin/zmshutil ]]; then
+        # shellcheck source=/dev/null
+        source ~/bin/zmshutil
+        zmsetvars
+    else
+        echo "ERROR: Cannot source Zimbra environment" >&2
+        exit 1
+    fi
 
+    # Set Zimbra environment variables
+    local ZIMBRA_HOSTNAME="${zimbra_server_hostname}"
+    local ZIMBRA_BINDDN="${zimbra_ldap_userdn}"
 
-####DIRETORIOS
+    # Directory management
+    local WORKDIR="${SCRIPT_DIR}/export"
+    local DIRETORIO="${WORKDIR}"
+    check_directory "${DIRETORIO}"
+    separator_char
 
-DIRETORIO=$WORKDIR
-Check_Directory
-separator_char
-DIRETORIO="`pwd`/skell"
-Check_Directory
-separator_char
-DESTINO=$WORKDIR
-mkdir $WORKDIR/alias #Cria diretorio temporario para exportar os nomes alternativos
+    DIRETORIO="${SCRIPT_DIR}/skell"
+    check_directory "${DIRETORIO}"
+    separator_char
 
-#PODE CONTINUAR
+    local DESTINO="${WORKDIR}"
+    mkdir -p "${DESTINO}/alias" || {
+        echo "ERROR: Cannot create ${DESTINO}/alias" >&2
+        exit 1
+    }
 
+    # Export Class of Service (COS)
+    export_cos "${ZIMBRA_HOSTNAME}" "${ZIMBRA_BINDDN}" "${DESTINO}"
+    separator_char
 
- #EXPORTANDO CLASSES DE SERVICO
- $NORMAL_TEXT "EXPORTANDO CLASSES DE SERVICO"
- separator_char
- ldapsearch -x -H ldap://$ZIMBRA_HOSTNAME -D $ZIMBRA_BINDDN -w $zimbra_ldap_password -b '' -LLL "(objectclass=zimbraCOS)" > $DESTINO/COS.ldif
- $INFO_TEXT "CLASSES DE SERVICO EXPORTADAS COM SUCESSO: $DESTINO/COS.ldif"
- separator_char
- 
- #EXPORTANDO CONTAS - DESCONSIDERANDO CONTAS DE SERVICO DO ZIMBRA (zimbraIsSystemResource=TRUE)
- $NORMAL_TEXT  "EXPORTANDO CONTAS"
- separator_char
- ldapsearch -x -H ldap://$ZIMBRA_HOSTNAME -D $ZIMBRA_BINDDN -w $zimbra_ldap_password -b '' -LLL '(&(!(zimbraIsSystemResource=TRUE))(objectClass=zimbraAccount))' > $DESTINO/CONTAS.ldif
- $INFO_TEXT "CONTAS EXPORTADAS COM SUCESSO: $DESTINO/CONTAS.ldif"
- separator_char
- 
- #EXPORTANDO NOMES ALTERNATIVOS
- $NORMAL_TEXT  "EXPORTANDO NOMES ALTERNATIVOS"
- separator_char
+    # Export accounts (excluding system accounts)
+    export_accounts "${ZIMBRA_HOSTNAME}" "${ZIMBRA_BINDDN}" "${DESTINO}"
+    separator_char
 
- ldapsearch -x -H ldap://$ZIMBRA_HOSTNAME -D $ZIMBRA_BINDDN -w $zimbra_ldap_password  -b '' -LLL '(&(!(uid=root))(!(uid=postmaster))(objectclass=zimbraAlias))' uid | grep ^uid | awk '{print $2}' > $DESTINO/lista_contas.ldif
+    # Export aliases
+    export_aliases "${ZIMBRA_HOSTNAME}" "${ZIMBRA_BINDDN}" "${DESTINO}" "${WORKDIR}"
+    separator_char
 
- for MAIL in $(cat $DESTINO/lista_contas.ldif);
- 	do 
-	      ldapsearch -x -H ldap://$ZIMBRA_HOSTNAME -D $ZIMBRA_BINDDN -w $zimbra_ldap_password -b '' -LLL "(&(uid=$MAIL)(objectclass=zimbraAlias))" > $DESTINO/alias/$MAIL.ldif
-		  	cat $DESTINO/alias/*.ldif > $DESTINO/APELIDOS.ldif
-			done 
+    # Export distribution lists
+    export_distribution_lists "${ZIMBRA_HOSTNAME}" "${ZIMBRA_BINDDN}" "${DESTINO}"
+    separator_char
 
-   $INFO_TEXT "NOMES ALTENATIVOS EXPORTADOS COM SUCESSO: $DESTINO/APELIDOS.ldif"
-   separator_char
+    # Clean temporary files
+    clear_workdir "${WORKDIR}"
 
-#EXPORTANDO LISTAS DE DISTRIBUICAO
-   $NORMAL_TEXT  "EXPORTANDO LISTAS DE DISTRIBUICAO"
-   separator_char
-ldapsearch -x -H ldap://$ZIMBRA_HOSTNAME -D $ZIMBRA_BINDDN -w $zimbra_ldap_password -b '' -LLL "(|(objectclass=zimbraGroup)(objectclass=zimbraDistributionList))" > $DESTINO/LISTAS.ldif
-   $INFO_TEXT "LISTAS DE DISTRIBUICAO EXPORTADAS COM SUCESSO: $DESTINO/LISTAS.ldif"
-   separator_char
+    # Copy import script and simple banner
+    cp -f "${SCRIPT_DIR}/skell/importar_ldap.sh" "${DESTINO}/" || {
+        echo "WARNING: Cannot copy importar_ldap.sh" >&2
+    }
+    cp -f "${SCRIPT_DIR}/skell/banner_simples.txt" "${DESTINO}/" || {
+        echo "WARNING: Cannot copy banner_simples.txt" >&2
+    }
+    chmod +x "${DESTINO}/importar_ldap.sh" 2>/dev/null || true
 
-#LIMPA OS ARQUIVOS TEMPORARIOS CRIADOS NO DIRETORIO EXPORT
-Clear_Workdir
+    # Interactive hostname replacement
+    replace_hostname "${DESTINO}"
+    separator_char
 
-#COPIA SCRIPT DE IMPORTACAO E BANNER SIMPLES 
-cp skell/importar_ldap.sh export/
-cp skell/banner_simples.txt export/
-chmod +x export/importar_ldap.sh
+    # Interactive mailbox export
+    export_mailboxes
+    separator_char
 
-#INTERATIVIDADE: ALTERAR HOSTNAME DO SERVIDOR
-Replace_Hostname
-separator_char
+    # Get export destination
+    local export_path
+    export_path=$(get_export_destination)
+    separator_char
 
-#INTERATIVIDADE: EXPORTAR (RELACAO) DE CAIXAS POSTAIS
+    # Export full mailboxes
+    execute_export_full "${export_path}" "${WORKDIR}"
+    separator_char
 
-export_Mailboxes
-separator_char
+    # Export trash folders
+    execute_export_trash "${export_path}" "${WORKDIR}"
+    separator_char
 
-Export_Dest
+    # Export spam/junk folders
+    execute_export_junk "${export_path}" "${WORKDIR}"
+    separator_char
 
-#EXPORTANDO CAIXA POSTAL
-execute_Export_Full
-separator_char
+    echo "Migration export completed successfully!"
+}
 
-#EXPORTANDO LIXEIRA
-execute_Export_Trash
-separator_char
-
-#EXPORTANDO SPAM
-execute_Export_Junk
-separator_char
-
-#FIM
+# Run main function
+main "$@"
