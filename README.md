@@ -24,17 +24,16 @@ Maintained by **Harry Dertin Sutisna Alsyundawy** | Original Creator **Fabio Soa
 
 Banyak administrator mail server menghadapi kendala saat melakukan upgrade in-place pada sistem operasi yang telah *End-of-Life (EOL)* (seperti CentOS 5/6/7 atau Ubuntu 10.04/12.04/14.04/16.04/18.04), di mana *in-place upgrade* sering merusak database MySQL/MariaDB atau biner OpenLDAP. **Z2Z** menyediakan solusi migrasi terisolasi (*clean-state migration*) dengan mengekstrak seluruh objek direktori LDAP (Email Domains, Global Config, Class of Service, Akun, Hash Password Asli, Mail Alias, Distribution Lists) serta seluruh data mailbox (Email, Kalender, Kontak, Task, Briefcase, Preferences) melalui stream REST API murni, memungkinkan migrasi ke server baru yang bersih tanpa membawa sisa file sampah atau jejak malware dari server lama.
 
-**Ringkasan Keunggulan Flagship Release v1.0.4:**
+**Ringkasan Keunggulan Flagship Release v1.0.5:**
 
-- **Automated Domain Migration:** Ekspor dan impor domain otomatis via `DOMINIOS.ldif` dan helper script `create_domains.sh`, mengeliminasi kewajiban pembuatan domain manual di server target sebelum impor LDAP.
-- **Atomic Single-Pass Alias Export:** Mengganti ribuan loop sub-query `ldapsearch` lama dengan satu kueri atomik berkecepatan tinggi, memangkas waktu eksekusi ekspor alias dari 30+ menit menjadi hitungan detik.
-- **Anchored System Account Shield:** Menggunakan regex berjangkar `^(virus-[^@]*|ham\.[^@]*|spam\.[^@]*|galsync[^@]*)@` yang mencegah *false-positive exclusion* pada akun pengguna sah yang memiliki substring kata "admin" (seperti `badminton@`, `sysadmin@`).
-- **Flexible Mailbox Export Filtering:** Pilihan filter akun fleksibel saat ekspor: seluruh akun (*all*), akun aktif saja (*active-only*), atau filter berdasarkan domain spesifik untuk migrasi bertahap.
-- **Global Configuration & MTA Snapshot:** Otomatisasi pencatatan konfigurasi global `CONFIG_GLOBAL.ldif` dan `global_settings_snapshot.txt` (relayhost, mynetworks, MTA restrictions, authentication mechanisms).
-- **Universal LDAP Connection Fallback:** Mendukung deteksi otomatis `ldap_url`, `ldap_master_url`, dan `zmlocalconfig`, menjamin kompatibilitas penuh pada protokol LDAPS, custom LDAP port (389/636), dan multi-server.
-- **Progress-Aware Batch Execution & Live Run Option:** Skrip batch arsip mailbox yang dihasilkan dilengkapi penanda waktu real-time `[$(date)]`, penghitung progres `[X/Y]`, pelacakan error, serta opsi eksekusi live langsung dari menu Z2Z.
-- **Mailbox Shares & Resource Audit (`util/audit_shares.sh`):** Utilitas baru untuk memindai seluruh folder bersama, kalender sharing, dan buku alamat terdistribusi antar akun.
-- **Portable Cross-Platform Stream Engine:** Fungsi `portable_replace()` berbasis berkas temporer yang kebal terhadap variasi sintaks `sed -i` pada GNU Linux dan BSD/macOS.
+- **Webmail Signatures & Identities Migration:** Migrasi lengkap tanda tangan webmail teks (`zimbraPrefMailSignature`) dan HTML (`zimbraPrefMailSignatureHTML`) beserta pemetaan persona (`gid`/`mid`) via `util/export_signatures.sh` dan `util/import_signatures.sh`.
+- **Sieve Mail Filters Migration:** Ekspor dan impor aturan filter email Sieve (`zimbraMailSieveScript`) secara aman tanpa korupsi multiline via `util/export_sieve_filters.sh` dan `util/import_sieve_filters.sh`.
+- **Out-of-Office Vacation Auto-Reply:** Migrasi konfigurasi vacation responder, isi pesan, dan rentang tanggal dengan validasi format `YYYYMMDDHHMMSSZ` via `util/export_ooo.sh` dan `util/import_ooo.sh`.
+- **Calendar Resources & Equipment Accounts:** Ekspor, provisi, dan migrasi arsip kalender TGZ untuk resource ruangan/peralatan (`zimbraCalResType`) via `util/export_calendar_resources.sh` dan `util/import_calendar_resources.sh`.
+- **Pre-Flight DNS Diagnostic Utility:** Validasi menyeluruh rekaman DNS (MX, SPF, DKIM, DMARC) dan reachability resolver lokal sebelum migrasi via `util/dns_diagnostic.sh`.
+- **DKIM Key Snapshot Utility:** Pencatatan snapshot selector dan public key DKIM per domain via `util/export_dkim_keys.sh` dengan panduan regenerasi key baru di destination.
+- **Enterprise Code Hardening:** Eliminasi seluruh potensi abort `set -e` pada operasi aritmetika, refactoring rekursi tak terbatas ke infinite-safe loops, pencegahan kebocoran berkas temporer, dan verifikasi zero-defect ShellCheck.
+- **Automated Domain & Single-Pass Alias Migration:** Ekspor/impor domain otomatis via `DOMINIOS.ldif` / `create_domains.sh` dan query atomik alias berkecepatan tinggi.
 - **Technical Manual & Architecture:** Dokumentasi teknis lengkap tersedia di [DOCNOTE.md](DOCNOTE.md) dan riwayat rilis di [CHANGELOG](CHANGELOG).
 
 ---
@@ -148,24 +147,43 @@ Format `.tgz` REST API mempertahankan seluruh hierarki folder kustom, penanda fl
 
 ---
 
-## Diagnostic & Reporting Utilities
+## Diagnostic, Migration & Reporting Utilities
 
 Direktori `util/` menyediakan utilitas operasional yang dapat dijalankan secara mandiri:
 
 ```bash
-# 1. Laporan Ukuran Mailbox Seluruh Akun (Bytes, KB, MB, GB, TB)
-su - zimbra
+# 1. Validasi Pra-Migrasi DNS (MX, SPF, DKIM, DMARC, Resolver Reachability)
+./util/dns_diagnostic.sh
+
+# 2. Snapshot Konfigurasi & Kunci Publik DKIM Per-Domain
+./util/export_dkim_keys.sh
+
+# 3. Ekspor & Impor Tanda Tangan Webmail Serta Persona/Identitas Pengguna
+./util/export_signatures.sh
+./util/import_signatures.sh
+
+# 4. Ekspor & Impor Aturan Filter Email Sieve (zimbraMailSieveScript)
+./util/export_sieve_filters.sh
+./util/import_sieve_filters.sh
+
+# 5. Ekspor & Impor Status Vacation / Out-of-Office Auto-Reply
+./util/export_ooo.sh
+./util/import_ooo.sh
+
+# 6. Ekspor & Impor Calendar Resources & Akun Peralatan (Equipment)
+./util/export_calendar_resources.sh
+./util/import_calendar_resources.sh
+
+# 7. Laporan Ukuran Mailbox Seluruh Akun (Bytes, KB, MB, GB, TB)
 ./util/mailbox_size.sh
 
-# 2. Audit Aturan Penerusan Email (Admin Forward & User Preference)
-su - zimbra
+# 8. Audit Aturan Penerusan Email (Admin Forward & User Preference)
 ./util/audit_forwards.sh
 
-# 3. Audit Hak Akses Folder Bersama, Kalender & Kontak (Shares)
-su - zimbra
+# 9. Audit Hak Akses Folder Bersama, Kalender & Kontak (Shares)
 ./util/audit_shares.sh
 
-# 4. Penambahan Disclaimer / Tanda Tangan Wajib Per-Domain (ZCS 8.5+)
+# 10. Penambahan Disclaimer / Tanda Tangan Wajib Per-Domain (ZCS 8.5+)
 sudo ./util/add_disclaimer.sh
 ```
 
@@ -173,29 +191,43 @@ sudo ./util/add_disclaimer.sh
 
 ## Feature Evolution Matrix
 
-| Fitur / Kemampuan Sistem | v0.9.9 | v1.0.0b | v1.0.1 | v1.0.2 | v1.0.3 | v1.0.4 (Current) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Ekspor Objek Direktori LDAP** | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Lengkap)** |
-| **Bypass Timeout Mailbox Besar (`-t 0`)** | ❌ | ✅ | ✅ | ✅ | ✅ | **✅ (Unlimited)** |
-| **Safe Mailbox Merging (`resolve=skip`)** | ❌ | ✅ | ✅ | ✅ | ✅ | **✅ (Non-Destructive)** |
-| **Dukungan `zimbraGroup` pada Milis** | ❌ | ❌ | ✅ | ✅ | ✅ | **✅** |
-| **Multi-Server Detection Warning** | ❌ | ❌ | ❌ | ✅ | ✅ | **✅** |
-| **Lokalisasi Bahasa Inggris Penuh** | ❌ | ❌ | ❌ | ❌ | ✅ | **✅** |
-| **Audit ShellCheck & Linter Sempurna** | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (0 Warning)** |
-| **Automated Domain Migration** | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (Auto Provision)** |
-| **Mailbox Filter Modes (Active/Domain)** | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (Interactive)** |
-| **Global Config & MTA Snapshot** | ❌ | ❌ | ❌ | ❌ | ❌ | **✅** |
-| **Shared Folders & Calendar Audit** | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`audit_shares.sh`)** |
-| **Single-Pass Atomic Alias Export** | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (Ultra Fast)** |
-| **Anchored System Account Shield** | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (Zero False-Exclusion)** |
-| **Universal LDAP URL Fallback Resolver** | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (LDAPS & Custom Port)** |
-| **Progress-Aware Batch Script Generator** | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (Real-time Logger)** |
-| **Portable Stream Replacement (GNU/BSD)** | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (All OS)** |
+| Fitur / Kemampuan Sistem | v0.9.9 | v1.0.0b | v1.0.1 | v1.0.2 | v1.0.3 | v1.0.4 | v1.0.5 (Current) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Ekspor Objek Direktori LDAP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Lengkap)** |
+| **Bypass Timeout Mailbox Besar (`-t 0`)** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Unlimited)** |
+| **Safe Mailbox Merging (`resolve=skip`)** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Non-Destructive)** |
+| **Dukungan `zimbraGroup` pada Milis** | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | **✅** |
+| **Multi-Server Detection Warning** | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | **✅** |
+| **Lokalisasi Bahasa Inggris Penuh** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅** |
+| **Audit ShellCheck & Linter Sempurna** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (0 Warning)** |
+| **Automated Domain Migration** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Auto Provision)** |
+| **Mailbox Filter Modes (Active/Domain)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Interactive)** |
+| **Global Config & MTA Snapshot** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅** |
+| **Shared Folders & Calendar Audit** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (`audit_shares.sh`)** |
+| **Single-Pass Atomic Alias Export** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Ultra Fast)** |
+| **Anchored System Account Shield** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Zero False-Exclusion)** |
+| **Universal LDAP URL Fallback Resolver** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (LDAPS & Custom Port)** |
+| **Progress-Aware Batch Script Generator** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Real-time Logger)** |
+| **Portable Stream Replacement (GNU/BSD)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (All OS)** |
+| **Webmail Signatures & Identities** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export/import_signatures.sh`)** |
+| **Sieve Mail Filters Migration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export/import_sieve_filters.sh`)** |
+| **Out-of-Office Vacation Responders** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export/import_ooo.sh`)** |
+| **Calendar Resources & Equipment** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export/import_calendar_resources.sh`)** |
+| **Pre-Flight DNS Diagnostics** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`dns_diagnostic.sh`)** |
+| **DKIM Key Snapshot & Rotation Advisory** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export_dkim_keys.sh`)** |
 
 ---
 
 ## Complete Changelog
 
+- **v1.0.5 (2026-08-27) — Signatures, Sieve Filters, OOO, Calendar Resources, DNS Diagnostics & Hardening**
+  - **Webmail Signatures & Identities Migration:** Menambahkan `util/export_signatures.sh` dan `util/import_signatures.sh` untuk migrasi seluruh signature teks dan HTML beserta mapping persona identity.
+  - **Sieve Mail Filters Migration:** Menambahkan `util/export_sieve_filters.sh` dan `util/import_sieve_filters.sh` untuk migrasi filter Sieve multi-line secara aman.
+  - **Out-of-Office Vacation Auto-Reply:** Menambahkan `util/export_ooo.sh` dan `util/import_ooo.sh` dengan validasi format tanggal `YYYYMMDDHHMMSSZ`.
+  - **Calendar Resources & Equipment:** Menambahkan `util/export_calendar_resources.sh` dan `util/import_calendar_resources.sh` untuk provisioning dan ekspor arsip TGZ resource ruangan/peralatan.
+  - **Pre-Flight DNS Diagnostic Utility:** Menambahkan `util/dns_diagnostic.sh` untuk validasi menyeluruh MX, SPF, DKIM, DMARC, dan reachability resolver.
+  - **DKIM Key Snapshot Utility:** Menambahkan `util/export_dkim_keys.sh` untuk snapshot konfigurasi DKIM per-domain dengan advisory keamanan rotasi kunci.
+  - **Code Hardening & Fault Tolerance:** Memperbaiki potensi kegagalan `set -e` pada evaluasi aritmetika bash (`|| true`), merefaktor rekursi tak terbatas menjadi safe loops, dan memperbaiki penanganan berkas temporer.
 - **v1.0.4 (2026-08-27) — Automated Domain Migration, Filter Modes, Shares Audit & High-Speed Suite**
   - **Automated Domain Migration:** Ekspor domain via `DOMINIOS.ldif` dan companion provisioning script `create_domains.sh` yang otomatis diimpor di server tujuan.
   - **Flexible Mailbox Filter Modes:** Pilihan filter ekspor akun: semua akun (*all*), akun aktif saja (*active-only*), atau filter berdasarkan domain tertentu.

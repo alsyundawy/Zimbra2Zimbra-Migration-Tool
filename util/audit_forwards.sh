@@ -52,7 +52,7 @@ audit_forwards() {
 			continue
 		fi
 
-		((account_count++))
+		((account_count++)) || true
 
 		# Retrieve account forwarding attributes
 		local account_attrs
@@ -78,7 +78,7 @@ audit_forwards() {
 				"${combined_forwards}" \
 				"${local_delivery}" \
 				"${COLOR_RESET}"
-			((forward_count++))
+			((forward_count++)) || true
 		fi
 	done <<<"${accounts}"
 

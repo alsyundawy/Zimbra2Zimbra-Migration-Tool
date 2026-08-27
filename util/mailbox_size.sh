@@ -72,7 +72,7 @@ generate_report() {
 			continue
 		fi
 
-		((account_count++))
+		((account_count++)) || true
 
 		# Get mailbox size
 		raw_output="$(zmmailbox -z -m "${account}" gms 2>/dev/null || echo "")"
@@ -81,11 +81,11 @@ generate_report() {
 		if [[ -z "${mailbox_bytes}" ]]; then
 			printf "%b%-42s %16s%b\n" \
 				"${COLOR_YELLOW}" "${account}" "[FAILED/EMPTY]" "${COLOR_RESET}" >&2
-			((failed_count++))
+			((failed_count++)) || true
 			continue
 		fi
 
-		((total_size += mailbox_bytes))
+		((total_size += mailbox_bytes)) || true
 		local readable_size
 		readable_size="$(format_bytes "${mailbox_bytes}")"
 

@@ -6,9 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.0.5] - 2026-08-27
+
+### Added
+
+- **Webmail Signature & Identity Migration**: Added `util/export_signatures.sh` and `util/import_signatures.sh` to export and restore user webmail signatures via `zmprov gsig` and `zmprov csig`. Plain-text (`zimbraPrefMailSignature`) and HTML (`zimbraPrefMailSignatureHTML`) variants are captured. Persona identity mappings are preserved via `gid`/`mid`.
+- **Sieve Mail Filter Migration**: Added `util/export_sieve_filters.sh` and `util/import_sieve_filters.sh` to export and restore user Sieve filter scripts stored in `zimbraMailSieveScript`. Uses a temp-file approach to safely handle multi-line Sieve scripts without shell-quoting corruption. Validates target account existence before applying.
+- **Out-of-Office Responder Migration**: Added `util/export_ooo.sh` and `util/import_ooo.sh` to migrate vacation auto-reply configuration including the enabled flag, message body, start date, and end date. Date attributes are validated against the required `YYYYMMDDHHMMSSZ` format before import to prevent broken UI state.
+- **Calendar Resource & Equipment Migration**: Added `util/export_calendar_resources.sh` and `util/import_calendar_resources.sh` to export and provision calendar resources. Each resource manifest captures `zimbraCalResType`, capacity, contact email, and display name. Calendar data is exported as a TGZ archive via `zmmailbox` and imported with non-destructive `resolve=skip`.
+- **Pre-Flight DNS Diagnostic Utility**: Added `util/dns_diagnostic.sh` to validate domain DNS records (MX, SPF, DKIM, DMARC) before migration. DKIM selectors are read automatically from `zmdkimkeyutil`. Local resolver reachability is also checked against `/etc/resolv.conf`. Outputs a color-coded diagnostic summary.
+- **DKIM Key Snapshot Utility**: Added `util/export_dkim_keys.sh` to snapshot DKIM selector and public key configuration per domain. Includes a prominent advisory recommending fresh key generation on the destination server using `zmdkimkeyutil -a -d <domain>` to follow security best practices and avoid private key reuse.
+
+### Fixed (Maintenance Pass — 2026-08-27)
+
+- **Critical: `set -e` arithmetic abort on first account** — All `((var++))` arithmetic increments in `func.sh` (inside `execute_export_full`, `execute_export_trash`, `execute_export_junk` generator loops) and in every `util/` script (`audit_shares.sh`, `audit_forwards.sh`, `mailbox_size.sh`, `add_disclaimer.sh`) lacked `|| true`. Under `set -e`, `((0))` evaluates to exit code 1 and aborts the script on the very first iteration. Fixed by appending `|| true` to every bare `((var++))` expression throughout the codebase. The same fix was applied to the counter expressions embedded inside generated batch scripts (`script_export_FULL.sh`, `script_import_FULL.sh`, TRASH, JUNK).
+- **Critical: Infinite recursion / stack overflow in interactive prompts** — Six functions in `func.sh` (`test_exec`, `enter_new_hostname`, `replace_hostname`, `export_mailboxes`, `get_export_destination`) and two in `skell/importar_ldap.sh` (`test_exec`, `test_import_admin`) used tail-call recursion for re-prompting on invalid input. An adversarial or accidental sequence of bad inputs would exhaust the call stack. Converted all to `while true` loops with `continue` for invalid input and `break`/`return`/`exit` for valid choices.
+- **`portable_replace()` temp file leak on failure** — If `sed` failed (e.g. read-only filesystem), the `.tmp.XXXXXX` staging file was left behind and the original file was silently corrupted. Fixed by wrapping in an explicit `if/else` block that `rm -f`s the temp file on any `sed` or `mv` failure.
+- **`export_sieve_filters.sh` trap race condition** — A `trap 'rm -f "${TMP_RAW}"' EXIT` was set and then immediately cleared (`trap - EXIT`) on every loop iteration. If the script exited abnormally mid-loop, only the final iteration's temp file would have been cleaned (because `TMP_RAW` is evaluated at trap-fire time), and after clearing, no cleanup ran at all. Replaced with a single global `_cleanup_sieve_export()` function registered once at startup.
+- **`import_sieve_filters.sh` missing cleanup trap** — `TMP_SCRIPT` was created with `mktemp` inside the import loop but no `trap` was registered. If `set -e` triggered between creation and the final `rm -f`, the temp file leaked. Fixed with the same global-cleanup-function pattern.
+- **`export_calendar_resources.sh` FAILED counter never incremented** — `FAILED` was declared and initialized to `0` but the calendar archive failure branch incremented `SUCCESS` instead, making `Failed: 0` always appear in the summary regardless of actual failures. Fixed to correctly increment `FAILED` on archive failure.
+- **`check_mailbox()` non-numeric guard** — BSD `wc -l` emits leading whitespace; `mailbox_servers` could contain whitespace, making `((mailbox_servers > 1))` fail with a syntax error on some platforms. Added `${mailbox_servers//[^0-9]/}` stripping and a `:-0` fallback.
+- **Version headers** — Updated version string from `1.0.4` to `1.0.5` in `func.sh` and `skell/importar_ldap.sh`.
+
+### Changed
+
+- **TODO**: Moved six pending tasks to Completed Tasks with version tag v1.0.5. Added seven new researched pending tasks covering incremental delta sync, Carbonio CE compatibility layer, imapsync integration, parallel multi-domain export, and ZCS 7 legacy attribute hardening.
+
+---
+
 ## [1.0.4] - 2026-08-27
 
-### Highlights
+### Added (v1.0.4)
 
 - **Automated Domain Migration**: Added automated export and restoration of email domains via `DOMINIOS.ldif` and companion script `create_domains.sh`, removing the manual domain creation requirement before LDAP ingestion.
 - **Single-Pass Atomic LDAP Alias Export**: Replaced slow iterative loops with a single-pass LDAP query for email aliases, reducing export execution time from 30+ minutes down to seconds on large multi-thousand account deployments.

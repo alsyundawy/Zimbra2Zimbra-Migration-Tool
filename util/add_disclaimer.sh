@@ -67,7 +67,7 @@ add_disclaimers() {
 			continue
 		fi
 
-		((domain_count++))
+		((domain_count++)) || true
 		echo "Adding disclaimer to domain [${domain_count}]: ${domain}"
 
 		# Enable domain disclaimer signature and attach text & HTML
@@ -75,7 +75,7 @@ add_disclaimers() {
 			zimbraDomainMandatoryMailSignatureEnabled TRUE \
 			zimbraAmavisDomainDisclaimerText "${text_content}" \
 			zimbraAmavisDomainDisclaimerHTML "${html_content}" 2>/dev/null; then
-			((success_count++))
+			((success_count++)) || true
 		else
 			echo "WARNING: Failed to add disclaimer to ${domain}" >&2
 		fi

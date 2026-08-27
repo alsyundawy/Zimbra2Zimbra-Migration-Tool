@@ -4,7 +4,7 @@
 # Maintained by alsyundawy
 # Copyright (C) 2016-2026 Fabio Soares Schmidt, alsyundawy
 #
-# Version: 1.0.4
+# Version: 1.0.5
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -15,11 +15,11 @@ set -Eeuo pipefail
 # ============================================================================
 
 # ANSI color codes for terminal output
-readonly COLOR_BLUE='\e[1;34m'
-readonly COLOR_RED='\e[1;31m'
-readonly COLOR_YELLOW='\e[1;33m'
-readonly COLOR_GREEN='\e[1;32m'
-readonly COLOR_RESET='\e[0m'
+readonly COLOR_BLUE='\\e[1;34m'
+readonly COLOR_RED='\\e[1;31m'
+readonly COLOR_YELLOW='\\e[1;33m'
+readonly COLOR_GREEN='\\e[1;32m'
+readonly COLOR_RESET='\\e[0m'
 
 # Output text in blue (normal information)
 print_normal() {
@@ -47,27 +47,31 @@ print_choice() {
 
 # Display separator line
 separator_char() {
-	echo "+++++++++++++++++++++++++++++++++++++++++++++++++"
+	echo "++++++++++++++++++++++++++++++++++++++++++++++++"
 }
 
-# Prompt user for confirmation
+# Prompt user for confirmation — uses while loop to avoid unbounded recursion
 test_exec() {
 	local choice
-	read -r -p "Continue (yes/no)? " choice
-	case "${choice}" in
-	y | Y | yes | s | S | sim)
-		print_normal "Starting utility"
-		;;
-	n | N | no | nao)
-		exit 0
-		;;
-	*)
-		test_exec
-		;;
-	esac
+	while true; do
+		read -r -p "Continue (yes/no)? " choice
+		case "${choice}" in
+		y | Y | yes | s | S | sim)
+			print_normal "Starting utility"
+			return 0
+			;;
+		n | N | no | nao)
+			exit 0
+			;;
+		*)
+			print_info "Please enter yes or no."
+			;;
+		esac
+	done
 }
 
-# Portable in-place string replacement
+# Portable in-place string replacement with safe temp-file handling
+# BUG FIX: previous version had no cleanup if sed or mv failed.
 portable_replace() {
 	local search_str="$1"
 	local replace_str="$2"
@@ -78,9 +82,14 @@ portable_replace() {
 	fi
 
 	local tmp_file
-	tmp_file="$(mktemp "${target_file}.tmp.XXXXXX")"
-	sed "s|${search_str}|${replace_str}|g" "${target_file}" >"${tmp_file}"
-	mv -f "${tmp_file}" "${target_file}"
+	tmp_file="$(mktemp "${target_file}.tmp.XXXXXX")" || return 1
+
+	if sed "s|${search_str}|${replace_str}|g" "${target_file}" >"${tmp_file}"; then
+		mv -f "${tmp_file}" "${target_file}"
+	else
+		rm -f "${tmp_file}"
+		return 1
+	fi
 }
 
 # ============================================================================
@@ -128,9 +137,12 @@ run_as_zimbra() {
 }
 
 # Validate single server or single mailbox environment
+# BUG FIX: added || echo 0 guard so mailbox_servers is never empty in arithmetic
 check_mailbox() {
 	local mailbox_servers
-	mailbox_servers=$(zmprov gas mailbox 2>/dev/null | wc -l)
+	mailbox_servers=$(zmprov gas mailbox 2>/dev/null | wc -l || echo 0)
+	mailbox_servers="${mailbox_servers//[^0-9]/}"  # Strip non-numeric chars (e.g. whitespace on BSD wc)
+	mailbox_servers="${mailbox_servers:-0}"
 
 	if ((mailbox_servers > 1)); then
 		print_error "WARNING: Current version is designed for single server or single mailbox environments."
@@ -184,65 +196,71 @@ get_ldap_binddn() {
 # Hostname Management
 # ============================================================================
 
-# Prompt for new hostname with FQDN validation
+# Prompt for new hostname with FQDN validation — uses while loop to avoid unbounded recursion
 enter_new_hostname() {
-	local user_input
-	local fqdn_parts
+	local user_input fqdn_parts
 
-	read -r -p "Enter the new Zimbra server hostname: " user_input
+	while true; do
+		read -r -p "Enter the new Zimbra server hostname: " user_input
 
-	if [[ -z "${user_input}" ]]; then
-		enter_new_hostname
-		return
-	fi
+		if [[ -z "${user_input}" ]]; then
+			print_info "Hostname cannot be empty."
+			continue
+		fi
 
-	fqdn_parts=$(echo "${user_input}" | awk -F. '{print NF}')
+		fqdn_parts=$(echo "${user_input}" | awk -F. '{print NF}')
 
-	if ((fqdn_parts < 2)); then
-		print_error "ERROR: Provided hostname is not a valid FQDN."
-		enter_new_hostname
-		return
-	fi
+		if ((fqdn_parts < 2)); then
+			print_error "ERROR: Provided hostname is not a valid FQDN (e.g. mail.example.com)."
+			continue
+		fi
+
+		break
+	done
 
 	export NEW_HOSTNAME="${user_input}"
 	print_choice "Hostname set to: ${NEW_HOSTNAME}"
 }
 
-# Interactive hostname replacement prompt
+# Interactive hostname replacement prompt — uses while loop to avoid unbounded recursion
 replace_hostname() {
 	local destino="$1"
 	local choice
 
-	read -r -p "Replace Zimbra server hostname (yes/no)? " choice
-	case "${choice}" in
-	y | Y | yes | s | S | sim)
-		print_choice "Hostname will be changed."
-		# shellcheck disable=SC2154
-		local old_hostname="${zimbra_server_hostname:-}"
-		if [[ -z "${old_hostname}" ]]; then
-			old_hostname="$(zmhostname 2>/dev/null || hostname -f 2>/dev/null || echo "")"
-		fi
-		enter_new_hostname
-		if [[ -n "${old_hostname}" && -n "${NEW_HOSTNAME:-}" ]]; then
-			portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/DOMINIOS.ldif"
-			portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/CONTAS.ldif"
-			portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/LISTAS.ldif"
-			portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/APELIDOS.ldif"
-			portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/COS.ldif"
-			portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/CONFIG_GLOBAL.ldif"
-			portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/create_domains.sh"
-			print_info "Hostname replacement completed across all LDIF exports and scripts."
-		else
-			print_error "WARNING: Hostname replacement skipped due to missing hostname variable."
-		fi
-		;;
-	n | N | no | nao)
-		print_choice "Original server hostname will be maintained."
-		;;
-	*)
-		replace_hostname "${destino}"
-		;;
-	esac
+	while true; do
+		read -r -p "Replace Zimbra server hostname (yes/no)? " choice
+		case "${choice}" in
+		y | Y | yes | s | S | sim)
+			print_choice "Hostname will be changed."
+			# shellcheck disable=SC2154
+			local old_hostname="${zimbra_server_hostname:-}"
+			if [[ -z "${old_hostname}" ]]; then
+				old_hostname="$(zmhostname 2>/dev/null || hostname -f 2>/dev/null || echo "")"
+			fi
+			enter_new_hostname
+			if [[ -n "${old_hostname}" && -n "${NEW_HOSTNAME:-}" ]]; then
+				portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/DOMINIOS.ldif"
+				portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/CONTAS.ldif"
+				portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/LISTAS.ldif"
+				portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/APELIDOS.ldif"
+				portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/COS.ldif"
+				portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/CONFIG_GLOBAL.ldif"
+				portable_replace "${old_hostname}" "${NEW_HOSTNAME}" "${destino}/create_domains.sh"
+				print_info "Hostname replacement completed across all LDIF exports and scripts."
+			else
+				print_error "WARNING: Hostname replacement skipped due to missing hostname variable."
+			fi
+			break
+			;;
+		n | N | no | nao)
+			print_choice "Original server hostname will be maintained."
+			break
+			;;
+		*)
+			print_info "Please enter yes or no."
+			;;
+		esac
+	done
 }
 
 # ============================================================================
@@ -254,45 +272,53 @@ MAILBOX_FILTER_MODE="all"
 MAILBOX_FILTER_VALUE=""
 
 # Prompt whether to export mailboxes and configure filtering mode
+# BUG FIX: converted nested recursion to while loops
 export_mailboxes() {
 	local choice
-	read -r -p "Export mailboxes (yes/no)? " choice
-	case "${choice}" in
-	y | Y | yes | s | S | sim)
-		print_choice "Mailbox export enabled."
-		echo ""
-		print_info "Select mailbox filter mode:"
-		echo "  1) All non-system accounts (Default)"
-		echo "  2) Active accounts only (zimbraAccountStatus=active)"
-		echo "  3) Specific domain only"
-		read -r -p "Enter choice [1-3] (default: 1): " filter_choice
-		case "${filter_choice}" in
-		2)
-			MAILBOX_FILTER_MODE="active"
-			print_choice "Filter set: Active accounts only."
+
+	while true; do
+		read -r -p "Export mailboxes (yes/no)? " choice
+		case "${choice}" in
+		y | Y | yes | s | S | sim)
+			print_choice "Mailbox export enabled."
+			echo ""
+			print_info "Select mailbox filter mode:"
+			echo "  1) All non-system accounts (Default)"
+			echo "  2) Active accounts only (zimbraAccountStatus=active)"
+			echo "  3) Specific domain only"
+
+			local filter_choice
+			read -r -p "Enter choice [1-3] (default: 1): " filter_choice
+			case "${filter_choice}" in
+			2)
+				MAILBOX_FILTER_MODE="active"
+				print_choice "Filter set: Active accounts only."
+				;;
+			3)
+				MAILBOX_FILTER_MODE="domain"
+				while true; do
+					read -r -p "Enter domain name to export (e.g. example.com): " MAILBOX_FILTER_VALUE
+					[[ -n "${MAILBOX_FILTER_VALUE}" ]] && break
+					print_error "Domain cannot be empty."
+				done
+				print_choice "Filter set: Domain '${MAILBOX_FILTER_VALUE}' only."
+				;;
+			*)
+				MAILBOX_FILTER_MODE="all"
+				print_choice "Filter set: All non-system accounts."
+				;;
+			esac
+			break
 			;;
-		3)
-			MAILBOX_FILTER_MODE="domain"
-			read -r -p "Enter domain name to export (e.g. example.com): " MAILBOX_FILTER_VALUE
-			while [[ -z "${MAILBOX_FILTER_VALUE}" ]]; do
-				read -r -p "Domain cannot be empty. Enter domain name: " MAILBOX_FILTER_VALUE
-			done
-			print_choice "Filter set: Domain '${MAILBOX_FILTER_VALUE}' only."
+		n | N | no | nao)
+			print_choice "Mailbox export skipped. Execution aborted by user."
+			exit 0
 			;;
 		*)
-			MAILBOX_FILTER_MODE="all"
-			print_choice "Filter set: All non-system accounts."
+			print_info "Please enter yes or no."
 			;;
 		esac
-		;;
-	n | N | no | nao)
-		print_choice "Mailbox export skipped. Execution aborted by user."
-		exit 0
-		;;
-	*)
-		export_mailboxes
-		;;
-	esac
+	done
 }
 
 # Retrieve filtered mailbox list
@@ -314,24 +340,27 @@ get_filtered_mailbox_list() {
 	echo "${raw_list}" | grep -v -E "^(virus-[^@]*|ham\.[^@]*|spam\.[^@]*|galsync[^@]*)@" || true
 }
 
-# Prompt for export destination directory
+# Prompt for export destination directory — uses while loop to avoid unbounded recursion
 get_export_destination() {
 	local user_input
-	read -r -p "Enter export directory path: " user_input
 
-	if [[ -z "${user_input}" ]]; then
-		print_error "No directory specified."
-		get_export_destination
-		return
-	fi
+	while true; do
+		read -r -p "Enter export directory path: " user_input
 
-	if [[ ! -d "${user_input}" ]]; then
-		mkdir -p "${user_input}" || {
-			print_error "ERROR: Cannot create directory ${user_input}"
-			get_export_destination
-			return
-		}
-	fi
+		if [[ -z "${user_input}" ]]; then
+			print_error "No directory specified."
+			continue
+		fi
+
+		if [[ ! -d "${user_input}" ]]; then
+			if ! mkdir -p "${user_input}"; then
+				print_error "ERROR: Cannot create directory ${user_input}"
+				continue
+			fi
+		fi
+
+		break
+	done
 
 	print_choice "Export directory: ${user_input}"
 	echo "${user_input}"
@@ -368,7 +397,7 @@ export_domains() {
 
 	# Generate companion create_domains.sh helper script
 	local create_domains_script="${destino}/create_domains.sh"
-	cat <<'EOF' >"${create_domains_script}"
+	cat <<'SCRIPT_EOF' >"${create_domains_script}"
 #!/usr/bin/env bash
 ################################################################################
 # Z2Z Domain Provisioning Helper Script
@@ -381,20 +410,21 @@ log_msg() {
 }
 
 log_msg "Provisioning email domains on target Zimbra server..."
-EOF
+SCRIPT_EOF
 
 	local domain_list
 	domain_list="$(zmprov gad 2>/dev/null || true)"
 	while IFS= read -r dom; do
 		[[ -z "${dom}" ]] && continue
-		cat <<EOF >>"${create_domains_script}"
+		# Domain names are hard-coded into the generated script at export time
+		cat <<DOMEOF >>"${create_domains_script}"
 if zmprov gd '${dom}' &>/dev/null; then
 	log_msg "Domain '${dom}' already exists. Skipping."
 else
 	log_msg "Creating domain '${dom}'..."
 	zmprov cd '${dom}' || log_msg "WARNING: Failed to create domain '${dom}'"
 fi
-EOF
+DOMEOF
 	done <<<"${domain_list}"
 
 	chmod +x "${create_domains_script}"
@@ -586,6 +616,8 @@ export_distribution_lists() {
 # ============================================================================
 
 # Build full mailbox export script
+# BUG FIX: added '|| true' after all arithmetic ((var++)) in generated scripts
+#           to prevent set -e from aborting on the first iteration when var=0.
 execute_export_full() {
 	local export_path="$1"
 	local workdir="$2"
@@ -596,7 +628,7 @@ execute_export_full() {
 	print_info "${script_file}"
 
 	# Initialize scripts with shebang and headers
-	cat <<'EOF' >"${script_file}"
+	cat <<'SCRIPT_EOF' >"${script_file}"
 #!/usr/bin/env bash
 ################################################################################
 # Z2Z Auto-Generated Mailbox Export Script (FULL)
@@ -613,9 +645,9 @@ log_msg() {
 }
 
 log_msg "Starting Full Mailbox Export..."
-EOF
+SCRIPT_EOF
 
-	cat <<'EOF' >"${import_script}"
+	cat <<'SCRIPT_EOF' >"${import_script}"
 #!/usr/bin/env bash
 ################################################################################
 # Z2Z Auto-Generated Mailbox Import Script (FULL)
@@ -632,7 +664,7 @@ log_msg() {
 }
 
 log_msg "Starting Full Mailbox Import..."
-EOF
+SCRIPT_EOF
 
 	# Get filtered mailbox list
 	local mailbox_list
@@ -646,47 +678,50 @@ EOF
 	echo "TOTAL_ACCOUNTS=${total}" >>"${import_script}"
 
 	# Generate export/import commands
+	# '${mailbox}' and '${export_path}' expand at generation time (unquoted heredoc)
+	# producing hardcoded account/path strings in the generated script.
 	while IFS= read -r mailbox; do
 		[[ -z "${mailbox}" ]] && continue
-		((count++))
-		cat <<EOF >>"${script_file}"
+		((count++)) || true
+		cat <<CMDEOF >>"${script_file}"
 log_msg "Exporting [${count}/${total}] ${mailbox}..."
 if zmmailbox -z -m '${mailbox}' -t 0 getRestURL "//?fmt=tgz" > '${export_path}/${mailbox}.tgz'; then
-	((SUCCESS_COUNT++))
+	((SUCCESS_COUNT++)) || true
 else
 	log_msg "ERROR: Failed to export ${mailbox}"
-	((FAIL_COUNT++))
+	((FAIL_COUNT++)) || true
 fi
-EOF
+CMDEOF
 
-		cat <<EOF >>"${import_script}"
+		cat <<CMDEOF >>"${import_script}"
 log_msg "Importing [${count}/${total}] ${mailbox}..."
 if [[ -f '${export_path}/${mailbox}.tgz' ]]; then
 	if zmmailbox -z -m '${mailbox}' -t 0 postRestURL "//?fmt=tgz&resolve=skip" '${export_path}/${mailbox}.tgz'; then
-		((SUCCESS_COUNT++))
+		((SUCCESS_COUNT++)) || true
 	else
 		log_msg "ERROR: Failed to import ${mailbox}"
-		((FAIL_COUNT++))
+		((FAIL_COUNT++)) || true
 	fi
 else
 	log_msg "WARNING: Archive not found: ${export_path}/${mailbox}.tgz"
-	((FAIL_COUNT++))
+	((FAIL_COUNT++)) || true
 fi
-EOF
+CMDEOF
 	done <<<"${mailbox_list}"
 
-	cat <<'EOF' >>"${script_file}"
+	cat <<'SCRIPT_EOF' >>"${script_file}"
 log_msg "Export completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
-EOF
+SCRIPT_EOF
 
-	cat <<'EOF' >>"${import_script}"
+	cat <<'SCRIPT_EOF' >>"${import_script}"
 log_msg "Import completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
-EOF
+SCRIPT_EOF
 
 	chmod +x "${script_file}" "${import_script}"
 }
 
 # Build trash folder export script
+# BUG FIX: added '|| true' after all arithmetic ((var++)) in generated scripts
 execute_export_trash() {
 	local export_path="$1"
 	local workdir="$2"
@@ -696,7 +731,7 @@ execute_export_trash() {
 	print_normal "TRASH: Creating mailbox trash export script:"
 	print_info "${script_file}"
 
-	cat <<'EOF' >"${script_file}"
+	cat <<'SCRIPT_EOF' >"${script_file}"
 #!/usr/bin/env bash
 ################################################################################
 # Z2Z Auto-Generated Mailbox Trash Export Script
@@ -712,9 +747,9 @@ log_msg() {
 }
 
 log_msg "Starting Trash Mailbox Export..."
-EOF
+SCRIPT_EOF
 
-	cat <<'EOF' >"${import_script}"
+	cat <<'SCRIPT_EOF' >"${import_script}"
 #!/usr/bin/env bash
 ################################################################################
 # Z2Z Auto-Generated Mailbox Trash Import Script
@@ -730,7 +765,7 @@ log_msg() {
 }
 
 log_msg "Starting Trash Mailbox Import..."
-EOF
+SCRIPT_EOF
 
 	local mailbox_list
 	mailbox_list="$(get_filtered_mailbox_list)"
@@ -744,45 +779,46 @@ EOF
 
 	while IFS= read -r mailbox; do
 		[[ -z "${mailbox}" ]] && continue
-		((count++))
-		cat <<EOF >>"${script_file}"
+		((count++)) || true
+		cat <<CMDEOF >>"${script_file}"
 log_msg "Exporting Trash [${count}/${total}] ${mailbox}..."
 if zmmailbox -z -m '${mailbox}' -t 0 getRestURL "//Trash?fmt=tgz" > '${export_path}/${mailbox}-Trash.tgz'; then
-	((SUCCESS_COUNT++))
+	((SUCCESS_COUNT++)) || true
 else
 	log_msg "ERROR: Failed to export Trash for ${mailbox}"
-	((FAIL_COUNT++))
+	((FAIL_COUNT++)) || true
 fi
-EOF
+CMDEOF
 
-		cat <<EOF >>"${import_script}"
+		cat <<CMDEOF >>"${import_script}"
 log_msg "Importing Trash [${count}/${total}] ${mailbox}..."
 if [[ -f '${export_path}/${mailbox}-Trash.tgz' ]]; then
 	if zmmailbox -z -m '${mailbox}' -t 0 postRestURL "//?fmt=tgz&resolve=skip" '${export_path}/${mailbox}-Trash.tgz'; then
-		((SUCCESS_COUNT++))
+		((SUCCESS_COUNT++)) || true
 	else
 		log_msg "ERROR: Failed to import Trash for ${mailbox}"
-		((FAIL_COUNT++))
+		((FAIL_COUNT++)) || true
 	fi
 else
 	log_msg "WARNING: Archive not found: ${export_path}/${mailbox}-Trash.tgz"
-	((FAIL_COUNT++))
+	((FAIL_COUNT++)) || true
 fi
-EOF
+CMDEOF
 	done <<<"${mailbox_list}"
 
-	cat <<'EOF' >>"${script_file}"
+	cat <<'SCRIPT_EOF' >>"${script_file}"
 log_msg "Trash export completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
-EOF
+SCRIPT_EOF
 
-	cat <<'EOF' >>"${import_script}"
+	cat <<'SCRIPT_EOF' >>"${import_script}"
 log_msg "Trash import completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
-EOF
+SCRIPT_EOF
 
 	chmod +x "${script_file}" "${import_script}"
 }
 
 # Build junk/spam folder export script
+# BUG FIX: added '|| true' after all arithmetic ((var++)) in generated scripts
 execute_export_junk() {
 	local export_path="$1"
 	local workdir="$2"
@@ -792,7 +828,7 @@ execute_export_junk() {
 	print_normal "SPAM: Creating mailbox junk export script:"
 	print_info "${script_file}"
 
-	cat <<'EOF' >"${script_file}"
+	cat <<'SCRIPT_EOF' >"${script_file}"
 #!/usr/bin/env bash
 ################################################################################
 # Z2Z Auto-Generated Mailbox Junk/Spam Export Script
@@ -808,9 +844,9 @@ log_msg() {
 }
 
 log_msg "Starting Junk/Spam Mailbox Export..."
-EOF
+SCRIPT_EOF
 
-	cat <<'EOF' >"${import_script}"
+	cat <<'SCRIPT_EOF' >"${import_script}"
 #!/usr/bin/env bash
 ################################################################################
 # Z2Z Auto-Generated Mailbox Junk/Spam Import Script
@@ -826,7 +862,7 @@ log_msg() {
 }
 
 log_msg "Starting Junk/Spam Mailbox Import..."
-EOF
+SCRIPT_EOF
 
 	local mailbox_list
 	mailbox_list="$(get_filtered_mailbox_list)"
@@ -840,40 +876,40 @@ EOF
 
 	while IFS= read -r mailbox; do
 		[[ -z "${mailbox}" ]] && continue
-		((count++))
-		cat <<EOF >>"${script_file}"
+		((count++)) || true
+		cat <<CMDEOF >>"${script_file}"
 log_msg "Exporting Junk [${count}/${total}] ${mailbox}..."
 if zmmailbox -z -m '${mailbox}' -t 0 getRestURL "//Junk?fmt=tgz" > '${export_path}/${mailbox}-Junk.tgz'; then
-	((SUCCESS_COUNT++))
+	((SUCCESS_COUNT++)) || true
 else
 	log_msg "ERROR: Failed to export Junk for ${mailbox}"
-	((FAIL_COUNT++))
+	((FAIL_COUNT++)) || true
 fi
-EOF
+CMDEOF
 
-		cat <<EOF >>"${import_script}"
+		cat <<CMDEOF >>"${import_script}"
 log_msg "Importing Junk [${count}/${total}] ${mailbox}..."
 if [[ -f '${export_path}/${mailbox}-Junk.tgz' ]]; then
 	if zmmailbox -z -m '${mailbox}' -t 0 postRestURL "//?fmt=tgz&resolve=skip" '${export_path}/${mailbox}-Junk.tgz'; then
-		((SUCCESS_COUNT++))
+		((SUCCESS_COUNT++)) || true
 	else
 		log_msg "ERROR: Failed to import Junk for ${mailbox}"
-		((FAIL_COUNT++))
+		((FAIL_COUNT++)) || true
 	fi
 else
 	log_msg "WARNING: Archive not found: ${export_path}/${mailbox}-Junk.tgz"
-	((FAIL_COUNT++))
+	((FAIL_COUNT++)) || true
 fi
-EOF
+CMDEOF
 	done <<<"${mailbox_list}"
 
-	cat <<'EOF' >>"${script_file}"
+	cat <<'SCRIPT_EOF' >>"${script_file}"
 log_msg "Junk export completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
-EOF
+SCRIPT_EOF
 
-	cat <<'EOF' >>"${import_script}"
+	cat <<'SCRIPT_EOF' >>"${import_script}"
 log_msg "Junk import completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
-EOF
+SCRIPT_EOF
 
 	chmod +x "${script_file}" "${import_script}"
 }

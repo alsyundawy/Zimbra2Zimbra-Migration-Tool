@@ -5,7 +5,7 @@
 # Copyright (C) 2016-2026 Fabio Soares Schmidt, alsyundawy
 # For more information, please read README.md and INSTALL
 #
-# Version: 1.0.4
+# Version: 1.0.5
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -182,58 +182,65 @@ echo ""
 # Interactive Prompts
 # ============================================================================
 
-# Prompt for import confirmation
+# Prompt for import confirmation — uses while loop to avoid unbounded recursion
 test_exec() {
 	local choice
-	read -r -p "Begin import of domains, COS, accounts, aliases, and distribution lists? (yes/no) " choice
-	case "${choice}" in
-	y | Y | yes | s | S | sim)
-		print_normal "Starting Z2Z import..."
-		;;
-	n | N | no | nao)
-		print_choice "Import cancelled by user."
-		exit 0
-		;;
-	*)
-		test_exec
-		;;
-	esac
+	while true; do
+		read -r -p "Begin import of domains, COS, accounts, aliases, and distribution lists? (yes/no) " choice
+		case "${choice}" in
+		y | Y | yes | s | S | sim)
+			print_normal "Starting Z2Z import..."
+			return 0
+			;;
+		n | N | no | nao)
+			print_choice "Import cancelled by user."
+			exit 0
+			;;
+		*)
+			print_info "Please enter yes or no."
+			;;
+		esac
+	done
 }
 
-# Prompt for admin user import
+# Prompt for admin user import — uses while loop to avoid unbounded recursion
 test_import_admin() {
 	local choice
-	read -r -p "Import ADMIN user? (yes/no) " choice
-	case "${choice}" in
-	y | Y | yes | s | S | sim)
-		print_normal "Removing existing ADMIN user..."
+	while true; do
+		read -r -p "Import ADMIN user? (yes/no) " choice
+		case "${choice}" in
+		y | Y | yes | s | S | sim)
+			print_normal "Removing existing ADMIN user..."
 
-		# Get current admin DN safely
-		local admin_dn
-		admin_dn=$(ldapsearch -x \
-			-H "${LDAP_URI}" \
-			-D "${ZIMBRA_BINDDN}" \
-			-w "${ZIMBRA_PASSWORD}" \
-			-b '' \
-			-LLL "uid=admin" dn 2>/dev/null | sed -n 's/^dn: //p' | head -n 1 || echo "")
-
-		if [[ -n "${admin_dn}" ]]; then
-			ldapdelete -r -x \
+			# Get current admin DN safely
+			local admin_dn
+			admin_dn=$(ldapsearch -x \
 				-H "${LDAP_URI}" \
 				-D "${ZIMBRA_BINDDN}" \
 				-w "${ZIMBRA_PASSWORD}" \
-				"${admin_dn}" &>>"${SESSION_LOG}" || {
-				print_error "WARNING: Failed to delete existing admin user"
-			}
-		fi
-		;;
-	n | N | no | nao)
-		print_choice "Admin user will not be imported. Use the new installation password."
-		;;
-	*)
-		test_import_admin
-		;;
-	esac
+				-b '' \
+				-LLL "uid=admin" dn 2>/dev/null | sed -n 's/^dn: //p' | head -n 1 || echo "")
+
+			if [[ -n "${admin_dn}" ]]; then
+				ldapdelete -r -x \
+					-H "${LDAP_URI}" \
+					-D "${ZIMBRA_BINDDN}" \
+					-w "${ZIMBRA_PASSWORD}" \
+					"${admin_dn}" &>>"${SESSION_LOG}" || {
+					print_error "WARNING: Failed to delete existing admin user"
+				}
+			fi
+			return 0
+			;;
+		n | N | no | nao)
+			print_choice "Admin user will not be imported. Use the new installation password."
+			return 0
+			;;
+		*)
+			print_info "Please enter yes or no."
+			;;
+		esac
+	done
 }
 
 # Run confirmation prompts

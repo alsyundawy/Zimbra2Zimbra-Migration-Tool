@@ -5,7 +5,7 @@
 # Copyright (C) 2016-2026 Fabio Soares Schmidt, alsyundawy
 # For more information, please read README.md and INSTALL
 #
-# Version: 1.0.4
+# Version: 1.0.5
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -23,9 +23,10 @@ fi
 source "${SCRIPT_DIR}/func.sh"
 
 # Ensure all Zimbra binaries across ZCS 7.x-10.1 and multi-distro are in PATH
-for p in /opt/zimbra/bin /opt/zimbra/common/bin /opt/zimbra/common/sbin /opt/zimbra/openldap/bin /opt/zimbra/postfix/sbin /opt/zimbra/mysql/bin; do
-	if [[ -d "${p}" ]] && [[ ":${PATH}:" != *":${p}:"* ]]; then
-		PATH="${p}:${PATH}"
+for _p in /opt/zimbra/bin /opt/zimbra/common/bin /opt/zimbra/common/sbin \
+	/opt/zimbra/openldap/bin /opt/zimbra/postfix/sbin /opt/zimbra/mysql/bin; do
+	if [[ -d "${_p}" ]] && [[ ":${PATH}:" != *":${_p}:"* ]]; then
+		PATH="${_p}:${PATH}"
 	fi
 done
 export PATH

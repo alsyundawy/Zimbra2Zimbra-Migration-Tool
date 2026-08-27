@@ -2,35 +2,70 @@
 
 ## Completed Tasks
 
-- [x] Hostname FQDN syntax check (v0.9.9f)
-- [x] Verify destination server hostname matches directory records in exported LDIF files before ingestion (v1.0.0a)
-- [x] System alias protection toggle (v0.9.9c)
+### v0.9.9 — v1.0.3 (Historical)
+
 - [x] Exclude internal Zimbra system accounts to protect target server defaults (v0.9.9)
+- [x] System alias protection toggle for `admin`, `root`, and `postmaster` (v0.9.9c)
+- [x] Hostname FQDN syntax validation on interactive input (v0.9.9f)
 - [x] Unlimited timeout flag (`-t 0`) on large mailbox transfers (v1.0.0b)
-- [x] Distribution list query expansion with `zimbraGroup` support (v1.0.1)
-- [x] Multi-server environment detection warning (v1.0.2)
-- [x] Complete English console localization and updated banner (v1.0.3)
-- [x] Code hardening and static analysis compliance (v1.0.3)
-- [x] Single-pass atomic alias query replacing legacy iterative loops to cut export times on large installations from thirty minutes to seconds (v1.0.4)
-- [x] Universal LDAP URI resolver fallback via `zmlocalconfig` (v1.0.4)
+- [x] Non-destructive mailbox import strategy (`resolve=skip`) replacing destructive reset (v1.0.0b)
+- [x] Session import logging to trace operations with timestamped log files (v1.0.0a)
+- [x] Verify destination server hostname matches LDIF directory records before ingestion (v1.0.0a)
+- [x] Distribution list query expansion with `zimbraGroup` object class support (v1.0.1)
+- [x] Multi-server environment detection warning when more than one Mailbox server is active (v1.0.2)
+- [x] Complete English console localization and updated ASCII banner (v1.0.3)
+- [x] Code hardening and static analysis compliance (ShellCheck, shfmt) (v1.0.3)
+
+### v1.0.4 — Core Infrastructure
+
+- [x] Single-pass atomic alias LDAP query replacing legacy iterative loops (reduces export time from 30+ min to seconds on large installations) (v1.0.4)
+- [x] Universal LDAP URI resolver fallback via `zmlocalconfig`, `ldap_url`, and `ldap_master_url` (v1.0.4)
 - [x] Anchored regex mailbox account filtering preventing false exclusions on legitimate usernames (v1.0.4)
-- [x] Portable in-place replacement (v1.0.4)
+- [x] Portable in-place file replacement `portable_replace()` for cross-platform GNU/BSD compatibility (v1.0.4)
 - [x] Progress-aware timestamped batch mailbox export and import script generation with error tracking counters (v1.0.4)
-- [x] Mailbox size reporting and forwarding audit tools (v1.0.4)
-- [x] Dedicated session audit logging (v1.0.4)
-- [x] Automated domain export via `DOMINIOS.ldif` and companion script `create_domains.sh` for target provisioning (v1.0.4)
-- [x] Flexible mailbox filters (v1.0.4)
-- [x] Snapshot global MTA settings (v1.0.4)
-- [x] Immediate live export trigger (v1.0.4)
+- [x] Mailbox size reporting utility `util/mailbox_size.sh` with dynamic unit scaling (Bytes/KB/MB/GB/TB) (v1.0.4)
+- [x] Email forwarding audit utility `util/audit_forwards.sh` covering both admin and webmail forwarding rules (v1.0.4)
 - [x] Shared folders and calendar permissions audit utility `util/audit_shares.sh` (v1.0.4)
+- [x] Domain disclaimer injection utility `util/add_disclaimer.sh` per-domain via `zimbraAmavisDomainDisclaimerText` (v1.0.4)
+- [x] Dedicated session audit logging with timestamped log files per export session (v1.0.4)
+- [x] Automated domain export via `DOMINIOS.ldif` and companion script `create_domains.sh` for target provisioning (v1.0.4)
+- [x] Flexible mailbox export filters: all accounts, active-only, or per-domain (v1.0.4)
+- [x] Global MTA configuration snapshot `CONFIG_GLOBAL.ldif` and `global_settings_snapshot.txt` (v1.0.4)
+- [x] Immediate live mailbox export trigger option from within `z2z.sh` session (v1.0.4)
+
+### v1.0.5 — Extended Migration Coverage + Codebase Audit
+
+- [x] Export and restore user webmail signatures and persona identities via `zmprov gsig/csig/gid/mid` with plain-text and HTML variant support (`util/export_signatures.sh`, `util/import_signatures.sh`) (v1.0.5)
+- [x] Export and restore user Sieve mail filter rules from `zimbraMailSieveScript` LDAP attribute with safe in-memory handling (`util/export_sieve_filters.sh`, `util/import_sieve_filters.sh`) (v1.0.5)
+- [x] Export and restore Out-of-Office vacation auto-reply status, message body, and date range with `YYYYMMDDHHMMSSZ` format validation (`util/export_ooo.sh`, `util/import_ooo.sh`) (v1.0.5)
+- [x] Export and provision calendar resources and equipment accounts (`zimbraCalResType`) including calendar TGZ data migration (`util/export_calendar_resources.sh`, `util/import_calendar_resources.sh`) (v1.0.5)
+- [x] Pre-flight DNS diagnostic utility validating domain MX, SPF, DKIM, and DMARC records with local resolver reachability check (`util/dns_diagnostic.sh`) (v1.0.5)
+- [x] DKIM key snapshot utility with regeneration advisory for secure key rotation on the destination server (`util/export_dkim_keys.sh`) (v1.0.5)
+
+### v1.0.5 — Bug Fixes & Hardening (Maintenance Pass)
+
+- [x] Fixed critical `set -e` arithmetic abort: all `((var++))` increments now use `|| true` across `func.sh`, all `util/` scripts, and generated batch scripts (v1.0.5)
+- [x] Fixed infinite recursion / stack overflow risk in 8 interactive prompt functions across `func.sh` and `skell/importar_ldap.sh` — converted to `while true` loops (v1.0.5)
+- [x] Fixed `portable_replace()` temp file leak and file corruption risk on `sed` failure — added `if/else` with `rm -f` on all failure paths (v1.0.5)
+- [x] Fixed `export_sieve_filters.sh` trap race condition — replaced per-iteration `trap`/`trap -` with single global cleanup function (v1.0.5)
+- [x] Fixed `export_calendar_resources.sh` FAILED counter never incremented — failure branch now correctly increments `FAILED` instead of `SUCCESS` (v1.0.5)
+- [x] Fixed BSD/macOS `wc -l` leading-whitespace issue in `check_mailbox()` causing arithmetic syntax errors (v1.0.5)
+- [x] Added default `*) : ;;` branch to all `case` statements missing it (`export_signatures.sh`, `import_ooo.sh`) (v1.0.5)
+- [x] Eliminated command substitution masking in `export_calendar_resources.sh` and `export_dkim_keys.sh` heredocs (v1.0.5)
+- [x] Updated `DOCNOTE.md` with Section 8: Perbaikan Kualitas Kode documenting all bugs, root causes, and fixes (v1.0.5)
+- [x] Updated `CHANGELOG` with `### Fixed (Maintenance Pass)` section and refactored headings to Keep a Changelog standard (v1.0.5)
+
+---
 
 ## Pending Tasks
 
-- [ ] Webmail signatures and personas
-- [ ] Export and restore user Sieve mail filter rules from OpenLDAP attributes (`zimbraMailSieveScript`)
-- [ ] Out-of-Office responders
-- [ ] Export and provision calendar resources and equipment accounts (`zimbraCalResType`)
-- [ ] Incremental delta mailbox sync
-- [ ] Pre-flight DNS diagnostic utility to validate MX records and local resolvers
-- [ ] Parallel export orchestrator
-- [ ] Implement whiptail and dialog terminal interface for interactive menu navigation
+- [ ] Incremental delta mailbox sync using timestamp-based filtering to transfer only messages received after initial export cutover
+- [ ] Parallel export orchestrator with configurable worker count and per-account retry logic with exponential backoff for large multi-domain installations
+- [ ] Implement `whiptail`/`dialog` terminal UI for interactive guided menu navigation across all migration phases
+- [ ] Carbonio CE compatibility layer: auto-detect target platform via `zimbraServerVersionMajor` and adjust provisioning commands accordingly
+- [ ] `imapsync` integration guide and wrapper script for live delta synchronization during migration cutover windows
+- [ ] Multi-domain parallel export with domain-scoped subshell isolation to distribute load across CPU cores
+- [ ] ZCS 7 legacy attribute compatibility hardening: graceful skip for attributes not present in ZCS 7.x (e.g., `zimbraCalResCapacity`)
+- [ ] Post-migration integrity checker: compare mailbox sizes between source and destination and flag accounts with delta above a configurable threshold
+- [ ] Encrypted export archive option: wrap mailbox TGZ files with GPG symmetric key before transfer for data-at-rest security
+- [ ] HTML migration summary report: self-contained report with per-domain account counts, mailbox sizes, and success/failure statistics

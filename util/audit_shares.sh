@@ -52,7 +52,7 @@ audit_shares() {
 			continue
 		fi
 
-		((account_count++))
+		((account_count++)) || true
 
 		# Retrieve all shares for the account
 		shares_output="$(zmmailbox -z -m "${account}" getAllShares 2>/dev/null || true)"
@@ -66,7 +66,7 @@ audit_shares() {
 			while IFS= read -r share_line; do
 				[[ -z "${share_line}" ]] && continue
 				printf "  %b↳ %s%b\n" "${COLOR_GREEN}" "${share_line}" "${COLOR_RESET}"
-				((share_count++))
+				((share_count++)) || true
 			done <<<"${clean_shares}"
 			echo ""
 		fi
