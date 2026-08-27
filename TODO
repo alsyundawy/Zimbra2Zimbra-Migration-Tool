@@ -62,20 +62,57 @@
 
 ## Pending Tasks (Release 1.0.7 Roadmap)
 
+### Critical & High Priority — Safety, Verification & Core Hardening
+
+- [ ] **[IDE-107-A01] Independent ShellCheck + shfmt + bats Test Harness**: Add CI job that runs ShellCheck + shfmt on every `*.sh` and publish results. Status of “0 warnings” must be independently verified (currently UNKNOWN — REQUIRES VERIFICATION).
+- [ ] **[IDE-107-A02] Hard-Fail Disk/Inode Pre-Flight**: Change `check_disk_capacity()` to exit non-zero by default when free space or inodes fall below configurable threshold; allow override only with `--force`.
+- [ ] **[IDE-107-A03] Checkpoint File Locking + Atomic Updates**: Protect `.z2z_checkpoint.db` with `flock` or migrate to SQLite transactions so parallel workers cannot race.
+- [ ] **[IDE-107-A18] Secure Temporary Directory**: Always create private temp dirs (prefer `/dev/shm` or controlled path) instead of world-writable `/tmp` to mitigate symlink/TOCTOU attacks.
+- [ ] **[IDE-107-A19] Explicit Non-Zero Exit on Any FAILED Checkpoint**: Final summary of batch scripts must exit 1 if any account remains `FAILED` or `MISSING`.
+- [ ] **[IDE-107-A26] Pre-Flight Zimbra Version + Schema Detection**: Record source and target Zimbra version/patch level and warn or abort on large version gaps (especially 7.x → 10.1).
+- [ ] **[IDE-107-A27] Secrets Redaction in All Logs**: Filter password-like strings and LDAP credentials from session and batch logs.
+- [ ] **[IDE-107-A16] Failure-Injection Test Suite**: bats (or equivalent) tests that simulate kill -9, disk full, network drop, permission denied, and LDAP unavailability; verify resume and exit codes.
+- [ ] **[IDE-107-A17] Distro × Zimbra Version Matrix Documentation + CI**: Publish only combinations that have been actually tested; mark others as UNKNOWN — REQUIRES VERIFICATION. Align with official Zimbra 10.1 supported OS list (Ubuntu 18/20/22/24, RHEL/Rocky/Oracle 8/9).
+
 ### Enterprise Core & Multi-Node Orchestration
 
-- [ ] **[IDE-107-01] Multi-Server Cluster Topology Router**: Implement automated cluster discovery (`zmprov gas mailbox`) with per-mailbox-server batch routing (`-s <server>`) to query and stream accounts directly from their home storage node without overloading the master LDAP node.
-- [ ] **[IDE-107-02] Carbonio Community Edition (CE) Compatibility Adapter**: Auto-detect Carbonio environment via biner `/opt/zextras/bin/carbonio` and adapt LDAP/provisioning syntax (`carbonio prov` / `carbonio admin`) for seamless cross-platform migration.
-- [ ] **[IDE-107-03] Interactive TUI Wizard via `whiptail` / `dialog`**: Implement a guided Terminal UI dashboard for interactive phase selection (Domains, Accounts, Signatures, Sieve, OOO, Mailboxes) with automatic fallback to standard CLI text mode.
-- [ ] **[IDE-107-04] Encrypted Transit & GPG Archive Shield**: Add optional AES-256-GCM / GPG symmetric encryption for exported mailbox `.tgz` bundles and LDAP dumps during transit over untrusted public WAN networks.
-- [ ] **[IDE-107-05] ZCS 7.x & 8.0 Legacy Password & Schema Normalizer**: Add automated sanitization for legacy MD5/{CRYPT} password hashes and conversion of obsolete LDAP schema attributes when migrating from legacy ZCS 7/8 to Zimbra 10.1 (Daffodil).
+- [ ] **[IDE-107-01 / IDE-107-A04] Multi-Server Cluster Topology Router**: Implement automated cluster discovery (`zmprov gas mailbox`) with per-mailbox-server batch routing (`-s <server>`) so accounts are queried/streamed from their home storage node.
+- [ ] **[IDE-107-02 / IDE-107-A05] Carbonio Community Edition (CE) Compatibility Adapter**: Auto-detect Carbonio environment via `/opt/zextras/bin/carbonio` and adapt LDAP/provisioning syntax (`carbonio prov` / `carbonio admin`) for seamless cross-platform migration.
+- [ ] **[IDE-107-05 / IDE-107-A06] ZCS 7.x & 8.0 Legacy Password & Schema Normalizer**: Automated sanitization for legacy MD5/{CRYPT} password hashes and conversion of obsolete LDAP schema attributes when migrating from ZCS 7/8 to Zimbra 10.1 (Daffodil).
+- [ ] **[IDE-107-A28] Resume of LDAP Phase via Checkpoint**: Extend checkpoint tracking to LDAP object groups (domains → COS → accounts → aliases → DLs) so a partial LDAP import can be safely resumed.
 
-### Cutover Automation & Performance Optimization
+### Cutover Automation, Data Safety & Performance
 
-- [ ] **[IDE-107-06] Live Postfix Queue Drain & Transport Redirection**: Create `util/redirect_transport_maps.sh` to configure Postfix transport maps (`postmap /opt/zimbra/postfix/conf/transport`) for immediate mail forwarding to the new server IP during DNS MX propagation.
-- [ ] **[IDE-107-07] Chunked Date-Range Archiving for Terabyte Mailboxes**: Implement automated time-sliced chunking (`query=before:YYYY/MM/DD` and `query=after:YYYY/MM/DD`) for monolithic mailboxes (> 100 GB) to prevent HTTP 504 gateway timeouts on slow storage backends.
-- [ ] **[IDE-107-08] SSL/TLS Certificate & ACME/Let's Encrypt Migration**: Create `util/migrate_ssl_certs.sh` to snapshot commercial certificates (`zmcertmgr`) or automate DNS-01 ACME challenge issuance on the destination server.
-- [ ] **[IDE-107-09] Custom Anti-Spam & Postscreen Policy Exporter**: Create `util/export_spam_rules.sh` to extract custom SpamAssassin rules, Postscreen whitelists, and MTA CIDR networks (`zimbraMtaMyNetworks`) from source to destination.
-- [ ] **[IDE-107-10] Webhook Event Notification Engine**: Add configurable webhook alerting (Telegram, Slack, Discord, or generic JSON HTTP POST) triggered on batch stage completion, checkpoint resume, or failure thresholds.
-- [ ] **[IDE-107-11] Pre-Flight Local DNS Resolver (Unbound/DNSDist) Optimizer**: Create `util/optimize_dns_resolver.sh` to validate and provision local caching DNS (Unbound/Bind9) on the destination server to prevent RBL query rate-limiting.
-- [ ] **[IDE-107-12] Automated Disaster Rollback Engine**: Create `util/rollback_migration.sh` to safely revert target LDAP records and mailbox data back to a clean pre-migration baseline in case of maintenance window abort.
+- [ ] **[IDE-107-04 / IDE-107-A07] Encrypted Transit & GPG/AES Archive Shield**: Optional AES-256-GCM or GPG symmetric encryption for exported mailbox `.tgz` bundles and LDAP dumps + SHA-256 manifests for integrity verification during transit over untrusted networks.
+- [ ] **[IDE-107-12 / IDE-107-A08] Automated Disaster Rollback Engine**: `util/rollback_migration.sh` that safely reverts target LDAP records and mailbox data to a clean pre-migration baseline.
+- [ ] **[IDE-107-07 / IDE-107-A09] Chunked Date-Range Archiving for Terabyte Mailboxes**: Automated time-sliced chunking (`query=before:YYYY/MM/DD` and `query=after:YYYY/MM/DD`) for monolithic mailboxes (> 100 GB) to avoid HTTP 504 / timeout issues.
+- [ ] **[IDE-107-06 / IDE-107-A10] Live Postfix Queue Drain & Transport Redirection**: `util/redirect_transport_maps.sh` to configure Postfix transport maps and drain the queue during MX propagation.
+- [ ] **[IDE-107-A20] LDAP Import Dry-Run + Diff Mode**: `--dry-run` that shows what would be added/deleted without applying changes.
+- [ ] **[IDE-107-A21] Stronger Message-Count + Size Reconciliation**: Enhance `util/verify_migration.sh` to compare folder counts and sample message IDs in addition to size.
+- [ ] **[IDE-107-A22] Rate-Limit / Adaptive Backoff for REST Calls**: Throttle parallel workers based on mailboxd load to prevent overload.
+
+### Feature Completeness & Observability
+
+- [ ] **[IDE-107-03 / IDE-107-A15] Interactive TUI Wizard via `whiptail` / `dialog`**: Guided Terminal UI for phase selection (Domains, Accounts, Signatures, Sieve, OOO, Mailboxes) with automatic fallback to standard CLI text mode.
+- [ ] **[IDE-107-08 / IDE-107-A11] SSL/TLS Certificate & ACME/Let's Encrypt Migration**: `util/migrate_ssl_certs.sh` to snapshot commercial certificates (`zmcertmgr`) or automate DNS-01 ACME challenge issuance on the destination.
+- [ ] **[IDE-107-09 / IDE-107-A12] Custom Anti-Spam & Postscreen Policy Exporter**: `util/export_spam_rules.sh` to extract custom SpamAssassin rules, Postscreen whitelists, and MTA CIDR networks (`zimbraMtaMyNetworks`).
+- [ ] **[IDE-107-10 / IDE-107-A13] Webhook Event Notification Engine**: Configurable webhook alerting (Telegram, Slack, Discord, or generic JSON HTTP POST) on batch stage completion, checkpoint resume, or failure thresholds.
+- [ ] **[IDE-107-11 / IDE-107-A14] Pre-Flight Local DNS Resolver (Unbound/DNSDist) Optimizer**: `util/optimize_dns_resolver.sh` to validate and provision local caching DNS to prevent RBL query rate-limiting and split-horizon issues.
+- [ ] **[IDE-107-A25] Optional Imapsync Delta as Fallback**: Harden `util/imapsync_wrapper.sh` as automatic fallback when REST TGZ fails for individual accounts.
+
+### Documentation, Portability & Compliance
+
+- [ ] **[IDE-107-A23] Exact Supported Patch Levels & Known Broken Combinations**: Document precise Zimbra patch levels that have been tested; explicitly mark untested combinations as UNKNOWN.
+- [ ] **[IDE-107-A24] SELinux / AppArmor Guidance**: Add notes and optional restorecon / aa-enforce steps after import.
+- [ ] **[IDE-107-A29] Official vs Community Source Conflict Section**: Clearly separate “Official Zimbra in-place/rolling upgrade path” from “Z2Z clean-state migration path” so marketing claims are never misread as official support.
+- [ ] **[IDE-107-A30] SBOM / License Clarity**: Generate simple Software Bill of Materials of all scripts + consistent license headers for enterprise adoption.
+
+---
+
+## Notes for Maintainers (Release 1.0.7)
+
+- **Never claim “Zero Data Loss”, “100 % Safe”, or “ShellCheck PASS”** unless independently proven in the current release cycle.
+- All new features must respect `set -Eeuo pipefail`, proper quoting, trap cleanup, and the secure credential pattern introduced in 1.0.6.
+- Destination servers **must** be patched against current critical CVEs (including actively exploited CVE-2026-73570 and prior XSS/SSRF issues) before production cutover.
+- Prefer official Zimbra upgrade/rolling guides for 8.8.15/9 → 10.1 when possible; treat Z2Z as the clean-state / cross-OS / legacy-source alternative.
+- Keep the existing system-account exclusion, admin lockout guard, and checkpoint/resume design as non-negotiable safety invariants.
