@@ -1,70 +1,89 @@
- ____  _    _            _
- | __ )| | _| |_ ___  ___| |__
- |  _ \| |/ / __/ _ \/ __| '_ \
- | |_) |   <| ||  __/ (__| | | |
- |____/|_|\_\\__\___|\___|_| |_|  Z2Z - Versão 0.9.9c - Mantido por BKTECH <http://www.bktech.com.br>
- 
-################################# Copyright (C) 2016  Fabio Soares Schmidt <fabio@respirandolinux.com.br> ########################
+        _                                _
+  __ _| |___ _   _ _   _ _ __   __| | __ _ _      ___   _
+ / _` | / __| | | | | | | '_ \ / _` |/ _` \ \ /\ / / | | |
+| (_| | \__ \ |_| | |_| | | | | (_| | (_| |\ V  V /| |_| |
+ \__,_|_|___/\__, |\__,_|_| |_|\__,_|\__,_| \_/\_/  \__, |  Z2Z - Version 1.0.3 - Maintained by alsyundawy
+             |___/                                  |___/
 
-DISTRIBUÍDO SOB A LICENÇA CREATIVE COMMONS: Atribuição-NãoComercial-CompartilhaIgual (CC BY-NC-SA)
+################################# Copyright (C) 2016-2026 Fabio Soares Schmidt, alsyundawy ########################
 
-Esta licença permite que outros remixem, adaptem e criem a partir do trabalho original para fins não comerciais, desde que atribuam
-ao CRIADOR o devido crédito (banner original e Copyright), e que licenciem as novas criações sob os MESMOS termos. Este programa é 
-distribuído na esperança de que possa ser útil, mas SEM NENHUMA GARANTIA; sem uma garantia implícita de ADEQUAÇÃO a qualquer MERCADO ou 
-APLICAÇÃO EM PARTICULAR.
- 
-#################################################################################################################################
- 
- Contato:
- 
- Site: http://www.bktech.com.br
- E-mail: z2z@bktech.com.br
+DISTRIBUTED UNDER CREATIVE COMMONS LICENSE: Attribution-NonCommercial-ShareAlike (CC BY-NC-SA)
+
+This license allows others to remix, adapt, and build upon the original work non-commercially, as long as they credit the CREATOR appropriately (original banner and Copyright) and license new creations under the SAME terms. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 #################################################################################################################################
 
- *****  INSTALAÇÃO ******
- 
-Por ser tratar de um programa em shell, a ferramenta Z2Z não exige instalação, bastando extrair o seu conteúdo, conceder permissão e executar o comando ./z2z.sh para iniciar o procedimento de migração.
+ Contact:
 
-o programa irá verificar suas depedências e confirmar se o administrador deseja executar antes de iniciar a execução das rotinas de exportação.
+ Maintainer: alsyundawy
+ Original Author: Fabio Soares Schmidt <fabio@respirandolinux.com.br>
 
- ***** UTILIZAÇÃO  ******
+#################################################################################################################################
 
-# 1. Exportação 
- 
-O programa Z2Z deve ser executado com o usuário Zimbra no servidor de origem da migração. Uma vez confirmada a execução, o programa irá
-efetuar o export das informações das classes de serviço (COS), contas, apelidos e listas de distribuição no diretório do Zimbra. O que inclui a preservação de todas informações da conta, incluindo a senha (caso não esteja sendo utilizada autenticação externa).
-*** O administrador poderá escolher se deseja importar a conta ADMIN
+ *****  INSTALLATION  *****
 
-Durante a exportação das contas***, são excluídas da relação as contas de serviço do Zimbra, evitando qualquer impacto sobre o novo ambiente, por exemplo:
+As a shell-based toolset, Z2Z does not require compilation or installation packages. Simply extract the repository contents, grant executable permissions, and run `./z2z.sh` as the `zimbra` user to begin the migration process:
 
-- Conta para SPAM
- - Conta não NÃO-SPAM (HAM)
- - Conta para QUARENTENA de vírus
- - Conta para GALSYNC
- - Contas de serviço
+    su - zimbra
+    cd /path/to/Zimbra2Zimbra-Migration-Tool
+    chmod +x z2z.sh func.sh skell/importar_ldap.sh util/*.sh
+    ./z2z.sh
 
-O programa também irá permitir, no momento da operação de exportação das informações, que se modifique o hostname do servidor Zimbra, para cenários onde o hostname dos servidores de origem e destino sejam diferentes.
+The script will automatically check required dependencies and request user confirmation before starting any export procedures.
 
-Neste primeiro momento, o programa não EXECUTA o export das caixas postais (conteúdo), sendo gerados os arquivos de lote dentro do diretório export. 
-Isso permite que o administrador execute o export de acordo com a estratégia que desejar seguir para a migração, dividindo as contas para execuções em paralelo,por exemplo. O arquivo de lote é gerado com a execução do comando nativo do zimbra "zmmailbox", que irá permitir a exportação e importação das caixas postais, que inclui:
 
- - E-mail (preservando a hierarquia de pastas e todos os marcadores das mensagens)
- - Agenda
- - Porta Arquivos
- - Tarefas
- - Preferências
+ *****  USAGE  *****
 
-Para evitar o export de conteúdo desnecessário, são criados dois arquivos de lote separados dentro do diretório export para as pastas LIXEIRA e SPAM, sendo opcional ao administrador exportar e/ou importar estes conteúdos.
+# 1. Export Phase (Source Server)
 
-# 2. Importação
- 
-Para importação, o diretório "export" do Z2Z, que foi criado no servidor de origem, deverá ser copiado integralmente para o novo servidor. Todo o procedimento de importação também será executado com o usuário Zimbra no novo servidor.
+Z2Z must be executed with the `zimbra` system user on the source server. Once confirmed, the tool will:
+1. Export Class of Service (COS), accounts, aliases, and distribution lists from LDAP into the `export/` directory.
+2. Preserve account details including passwords (when using internal authentication).
+3. Provide an interactive option to export or skip the ADMIN user account.
 
-Nesta versão (0.9) não estão sendo tratadas as configurações do ambiente, que precisam ser mapeadas e configuradas manualmente. ANTES de iniciar o processo de import o administrador DEVERÁ CRIAR TODOS OS DOMÍNIOS DO AMBIENTE.
+During account export, Zimbra internal system accounts are automatically excluded to prevent conflict with the target environment, such as:
+ - Spam training accounts (spam.*)
+ - Non-spam / Ham training accounts (ham.*)
+ - Virus quarantine accounts (virus-*)
+ - Global Address List sync accounts (galsync.*)
+ - System resource accounts
 
-Primeiramente, deve ser efetuada a importação dos registros do LDAP, o script "importar_ldap.sh" irá efetuar as verificações necessárias e executar a importação na ordem correta. 
+The tool also allows interactively replacing the server hostname if the source and destination server hostnames differ.
 
-A importação das caixas postais deve ser efetuada posteriormente, executando o script "script_import_FULL.sh" ou conforme a estratégia definida. Caso tenha sido efetuada a exportação das pastas SPAM e/ou LIXEIRA, os scripts "script_import_Trash.sh" e "script_import_Junk.sh" devem ser executados ***.
+Mailbox Data Export:
+Batch scripts are generated in the `export/` directory (`script_export_FULL.sh`, `script_export_TRASH.sh`, `script_export_JUNK.sh`). This allows administrators to customize their execution strategy (e.g., executing in parallel or in batches). Batch files use the native Zimbra `zmmailbox` utility with `-t 0` (no timeout) to reliably export:
+ - Emails (preserving full folder hierarchy, tags, and flags)
+ - Calendars & Appointments
+ - Briefcase files
+ - Tasks
+ - User Preferences
 
-*** A importação das pastas SPAM e/ou LIXEIRA deve ser executada APÓS a importação da caixa principal. Para a caixa principal, é utilizado o método reset, que remove todo qualquer conteúdo anterior na caixa postal.
+Trash and Junk/Spam folders are generated as separate batch files so administrators can choose whether or not to migrate them.
+
+
+# 2. Import Phase (Destination Server)
+
+To import data, copy the entire `export/` directory created by Z2Z on the source server over to the new destination server. All import steps must be executed as the `zimbra` user on the new server.
+
+PREREQUISITE: You MUST manually create all target email domains on the destination server BEFORE starting the import.
+
+Step A - LDAP Import:
+Run the `importar_ldap.sh` script located in the copied export directory:
+
+    su - zimbra
+    cd /path/to/export
+    ./importar_ldap.sh
+
+This script will verify file integrity, validate hostname consistency, clean default Class of Service entries, and import LDAP objects in the correct order (COS -> Accounts -> Aliases -> Distribution Lists). A session log (`session-<timestamp>.log`) will record the operations.
+
+Step B - Mailbox Import:
+Import mailbox contents by executing the generated import script:
+
+    su - zimbra
+    cd /path/to/export
+    ./script_import_FULL.sh
+
+If you exported Trash and Junk folders and wish to import them, run the corresponding scripts AFTER the main mailbox import completes:
+
+    ./script_import_TRASH.sh
+    ./script_import_JUNK.sh

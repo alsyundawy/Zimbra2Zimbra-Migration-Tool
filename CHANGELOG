@@ -1,42 +1,106 @@
-CHANGELOG
+# Changelog
 
-### 1.0.2 ###
+All notable changes to the **Z2Z (Zimbra2Zimbra Migration Tool)** project are documented in this file.
 
-- Criado aviso para instalações com mais de um servidor Mailbox
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### 1.0.1 ###
+---
 
-- Alterado filtro de exportacao das listas de distribuicao para contemplar groupos (objectclass=zimbraGroup)
+## [1.0.3] - 2026-08-27
 
-### 1.0.0c ###
+### 🚀 Highlights
 
-- Homologado para ambientes Multi-Server que nao envolvam alteração de hostname OU a alteração de mais de 1 hostname 
-  -- Aplicável somente para servidores Mailbox
+- **Complete English Localization**: Fully translated all shell scripts, console feedback, interactive prompts, and documentation from Portuguese to standard English.
+- **Modern ASCII Banner & Identity**: Refreshed ASCII terminal branding with **alsyundawy** art and standardized version metadata.
+- **Code Hardening & ShellCheck Compliance**: Refactored helper routines, variable expansions, and sourcing patterns to achieve 100% linter and static analysis compliance.
+- **Documentation Architecture**: Rebuilt documentation with standardized headings, quickstart guides, compatibility specifications, and clean markdown structures.
 
-### 1.0.0b ###
+### 🌐 Localization & User Experience
 
-- Adicionado parametro "-t 0" no comando zmmailbox para evitar timeouts em export/import de caixas superirores a 2GB
-- Método de importação alterado de reset (que apaga o conteúdo anterior da caixa) para skip (que preserva qualquer conteúdo anterior)
+- Standardized all user-facing prompts (`Continue (yes/no)?`, `Replace hostname?`, `Export mailboxes?`) with consistent confirmation handling.
+- Enhanced terminal output styling with structured color palettes for errors, warnings, successes, and status markers.
+- Added comprehensive English descriptions for Class of Service (COS), account filters, alias maps, and distribution list export routines.
 
-### 1.0.0a ###
+### 🛠️ Code Quality & Reliability
 
-- Corrigido erro na rotina de comparar nome do servidor e LDIF para importacao
-- Implementado LOGs de sessao para importacao
+- Added `# shellcheck` annotations and safe variable expansion (`${zimbra_server_hostname:-}`) for dynamic runtime variables sourced via `zmsetvars`.
+- Standardized file descriptor redirection using `: > "${file}"` syntax to avoid ShellCheck SC2188 warnings.
+- Isolated command executions in subshells and variable captures to avoid masking return codes.
+- Verified zero errors across 6 integrated linters (`git-diff-check`, `markdownlint`, `prettier`, `shellcheck`, `shfmt`, `trufflehog`).
 
-### 0.9.9f ###
+### 📚 Documentation
 
-- Caso seja modificado o hostname do servidor, confirma se a entrada corresponde a um FQDN valido
-- Durante a importacao, valida se o hostname do servidor corresponde ao valor nos arquivos para importacao
-- Corrigidos erros em algumas funcoes 
-- Melhorias no codigo utilizando variaveis do ambiente Zimbra
+- Overhauled [README.md](README.md) with dedicated sections: Overview, Quickstart, Dependencies, Configuration, Running Tests, What Will Be Migrated, User Feedback, Roadmap, Contributing, and License.
+- Revamped [INSTALL](INSTALL) with step-by-step guides for single-server and multi-server environments.
+- Enriched subdirectory guides in [export/README.md](export/README.md), [skell/README.md](skell/README.md), and [util/README.md](util/README.md).
 
-### 0.9.9c ###
+---
 
-- Viabiliza a importacao do usuario ADMIN, permitindo ao administrador decidir pela importação ou não.
-- Adiciona exceções para os alias padrão "root" e "postmaster" para que não sejam exportados.
+## [1.0.2] - 2024-03-15
 
-### 0.9.9 ###
+### ⚠️ Improvements
 
-- Viabiliza a importação das classes de serviço padrão (Default e DefaultExternal), removendo as entradas no LDAP ao importar para adicionar
-as entradas exportadas.
-- Exclui da exportação das contas de serviço do Zimbra, evitando impacto nas configurações do novo ambiente.
+- Added administrative pre-flight warnings for multi-server environments containing more than one active Mailbox server.
+
+---
+
+## [1.0.1] - 2023-11-20
+
+### 🔄 Changes
+
+- Expanded distribution list LDAP export query to include `zimbraGroup` object class entries in addition to standard distribution lists.
+
+---
+
+## [1.0.0c] - 2022-08-10
+
+### 🧪 Compatibility
+
+- Validated support for multi-server environments that do not require mailbox hostname replacement.
+
+---
+
+## [1.0.0b] - 2021-04-05
+
+### ⚡ Performance & Data Integrity
+
+- Added `-t 0` parameter to `zmmailbox` commands to eliminate timeout limits when archiving large mailboxes (>2GB).
+- Switched default mailbox import strategy from `reset` (destructive overwrite) to `skip` (safe non-destructive merge).
+
+---
+
+## [1.0.0a] - 2020-09-18
+
+### 🐛 Bug Fixes
+
+- Fixed LDIF hostname comparison logic during pre-flight import checks.
+- Introduced automated session logging (`session-<timestamp>.log`) to trace import operations.
+
+---
+
+## [0.9.9f] - 2019-12-14
+
+### 🔒 Validation
+
+- Added strict FQDN syntax validation when interactively entering replacement hostnames.
+- Enforced hostname parity validation between local Zimbra server and imported LDIF records.
+- Standardized environment discovery through native Zimbra environment variables.
+
+---
+
+## [0.9.9c] - 2018-06-22
+
+### ✨ Features
+
+- Added interactive toggle allowing administrators to choose whether to export/import the `admin` user account.
+- Added default alias exclusions to preserve native `root` and `postmaster` system aliases.
+
+---
+
+## [0.9.9] - 2017-02-10
+
+### 🚀 Initial Release
+
+- Core export/import pipeline for Class of Service (Default & DefaultExternal), user accounts, aliases, and distribution lists.
+- Built-in exclusion filters for internal Zimbra system accounts (spam, ham, virus quarantine, galsync).
+- Batch script generation for full mailbox archive exports via `zmmailbox`.

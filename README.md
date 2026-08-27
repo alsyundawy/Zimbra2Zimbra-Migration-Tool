@@ -1,84 +1,99 @@
-# Z2Z (Zimbra2Zimbra Migration Tool) - _Versão 1.0.2_ - Mantido por BKTECH <http://www.bktech.com.br>
- 
-# Copyright (C) 2016-2026  Fabio Soares Schmidt <fabio@respirandolinux.com.br> 
+# Z2Z (Zimbra2Zimbra Migration Tool)
 
-# DISTRIBUÍDO SOB A LICENÇA CREATIVE COMMONS: Atribuição-NãoComercial-CompartilhaIgual (CC BY-NC-SA)
+Version: **1.0.3** | Maintained by: **alsyundawy**
 
-Esta licença permite que outros remixem, adaptem e criem a partir do trabalho original para fins não comerciais, desde que atribuam
-ao CRIADOR o devido crédito (banner original e Copyright), e que licenciem as novas criações sob os MESMOS termos. Este programa é 
-distribuído na esperança de que possa ser útil, mas SEM NENHUMA GARANTIA; sem uma garantia implícita de ADEQUAÇÃO a qualquer MERCADO ou 
-APLICAÇÃO EM PARTICULAR.
- 
-#################################################################################################################################
- 
-# Contato:
- 
- Site: <http://www.bktech.com.br>
- E-mail: <z2z@bktech.com.br>
- 
- Desenvolvedor: Fabio Soares Schmidt <fabio@respirandolinux.com.br> ou <https://respirandolinux.com.br>
+Copyright (C) 2016-2026 Fabio Soares Schmidt <fabio@respirandolinux.com.br>, alsyundawy
 
-#################################################################################################################################
-										
-[README - v1.0.2]
+## Overview
 
-												
-# CHANGELOG: 
+This tool simplifies the migration process between Zimbra environments, regardless of which edition is deployed (Open Source or Network Edition). Z2Z supports diverse migration scenarios — "A2Z: Anything/Anywhere to Zimbra".
 
- (FAVOR LER O ARQUIVO CHANGELOG)
+**Intended for upgrades (migrating TO a newer Zimbra version). Proper functionality during downgrades is not guaranteed.**
 
-# INSTALAÇÃO
- 
- (FAVOR LER O ARQUIVO INSTALL)
- 
-# UTILIZAÇÃO
- 
- (FAVOR LER O ARQUIVO INSTALL)
-  
-# Z2Z
+## Quickstart
 
-Essa ferramenta foi criada visando facilitar o processo de migração entre ambientes Zimbra, independentemente de qual versão
-ou edição esteja sendo **utilizada**. Motivada pelos desafios encontrados em migrações efetuadas pela BKTECH (parceiro oficial Zimbra para negócios e treinamentos), além da participação em comunidades do Zimbra, a ferramenta visa, no decorrer de sua evolução, atender os mais diversos cenários, contemplando também a migração de outras plataformas, livres e proprietárias - "A2Z: Anything/Anywhere to Zimbra".
+Run the migration export utility on the source Zimbra server:
 
-**Em casos de Upgrade, isto é, migrar PARA uma versão mais nova do Zimbra. Não é garantido o funcionamento em casos de downgrade.**
+```bash
+su - zimbra
+cd /path/to/Zimbra2Zimbra-Migration-Tool
+chmod +x z2z.sh func.sh skell/importar_ldap.sh util/*.sh
+./z2z.sh
+```
 
-# O QUE SERÁ MIGRADO?
+## Dependencies
 
-Embora o Zimbra seja uma ferramenta bastante avançada na questão de utilitários de migração, a ferramenta agiliza e simplifica o processo, exportando:
+- Zimbra Collaboration Server (8.x, 9.x, 10.x)
+- Standard Zimbra CLI tools: `zmprov`, `zmmailbox`, `ldapsearch`, `ldapadd`, `ldapdelete`
+- Bash shell (4.0+)
 
-**(Permitindo que seja possível renomear o nome do servidor durante a exportação)**.
+## Configuration
 
-[x] Classes de serviço
+Server hostnames and export destinations are configured interactively during execution. Environment variables are automatically sourced from `/opt/zimbra/bin/zmshutil`.
 
-[x] Contas - Preservando as senhas, caso esteja utilizando autenticação interna
+## Running Tests
 
-[x] Nomes alternativos
+Verify shell script syntax before running:
 
-[x] Listas de distribuição
+```bash
+bash -n z2z.sh func.sh skell/importar_ldap.sh util/*.sh
+```
 
-[x] Caixas postais (e-mails, calendários, tarefas, contatos, porta-arquivos, preferências,etc...)
+## Documentation
 
-Nesta primeira versão, Z2Z facilita o processo de exportação das entradas citadas, além de criar o lote de contas que devem ser exportadas, utilizando o comando nativo - zmmailbox. **Os domínios devem ser previamente criados antes da importação.**
+- **Changelog**: Please refer to the [CHANGELOG](CHANGELOG) file.
+- **Installation**: Please refer to the [INSTALL](INSTALL) file.
+- **Usage**: Please refer to the [INSTALL](INSTALL) file.
 
-![alt tag](https://respirandolinux.files.wordpress.com/2017/02/zimbrazimbratmp333z2z-master.jpg) 
+## What Will Be Migrated
 
-# DEPOIMENTOS
+Although Zimbra provides built-in utilities, Z2Z automates the process by exporting:
 
-"Recentemente utilizamos como apoio à migração de 2400 contas a ferramenta **Z2Z** no Tribunal Regional do Trabalho da 13ª Região. Tal ferramenta foi bastante útil pois estávamos em uma versão bem antiga do zimbra o que impossibilitou o update via script. A migração ocorreu de forma incremental devido a quantidade de contas até o chaveamento. Tudo ocorreu conforme o esperado e hoje estamos usando a versão mais atual do zimbra." - Filipe A. Motta Braga - Tribunal Regional do Trabalho da 13a. Região - Paraíba 
+- [x] **Classes of Service (COS)**
+- [x] **User Accounts** (passwords preserved with internal auth)
+- [x] **Aliases** (Alternative names)
+- [x] **Distribution Lists** (including zimbraGroup objects)
+- [x] **Mailboxes** (emails, calendars, tasks, contacts, briefcase, preferences)
 
-"Gostaria de parabeniza-lo pela excelente ferramenta z2z, me ajudou bastante em uma migração do Zimbra 8.0.7 para 8.7.11
-Grande abraço!" - Marco Brandão - Plus Informática - Minas Gerais
+In this version, Z2Z automates the export of entries above and generates batch scripts to export mailboxes using `zmmailbox`. **Domains must be created manually on the destination server prior to import.**
 
-"Parabéns por essa excelente ferramenta, seria impossível migrar o servidor antigo de nossa empresa sem o auxílio do seu projeto. A importação foi perfeita, quase 160 contas contas com mais de 700GB de dados, nenhuma falha e ambiente rápido e estável após a importação." - Alisson S. Conde – Equipe de TI Paranatex Têxtil LTDA - Paraná
+![Screenshot](https://respirandolinux.files.wordpress.com/2017/02/zimbrazimbratmp333z2z-master.jpg)
 
-"Eu utilizei o Z2Z para fazer uma migração de dois servidores zimbra (8.8.11 > 8.8.12). E minha experiência com a ferramenta foi a melhor possível, ocorreu tudo dentro do esperando, sem nenhum erro. Tempos atrás tive que fazer o mesmo trabalho, como ainda não conhecia a ferramenta, tentamos pela própria zimbra, mas tivemos muitos erros com caixas acima de 2GB, então fizemos por outros métodos. Isso nos custou quase 3 dias de trabalhos. Com o Z2Z, pudemos fazer o mesmo trabalho em apenas um dia e sem dor de cabeça. Valeu Fábio pelo excelente trabalho." - Fernando Lima, Gobah! Soluções em TI - Goiás. 
+## User Feedback
 
-# ROADMAP
- 
-Em versões futuras, a ferramenta visa atender cenários com ambientes Multi-Server que envolvam a substituição de hostnames de servidores mailbox, além da exportação das principais configurações do ambiente Zimbra.
+### Filipe A. Motta Braga - Regional Labor Court (13th Region)
 
-Também está no plano de evolução da mesma, o tratamento de diferentes estratégias de migração, permitindo migrações gradativas, por exemplo, através  de processos de export e import incrementais. 
- 
-**TODA avaliação e contribuição _(codificação,testes,críticas,sugestões)_ é muito bem-vinda !**
- 
-Obrigado desde já pela atenção.
+> "We recently used **Z2Z** to support the migration of 2,400 accounts at the Regional Labor Court of the 13th Region. The tool was very useful because we were on a very old version of Zimbra which made updates via script impossible. The migration was performed incrementally due to the volume of accounts until the cutover. Everything went as expected and we are now running on the latest version of Zimbra."
+
+### Marco Brandão - Plus Informática
+
+> "I would like to congratulate you on the excellent Z2Z tool. It helped me immensely during a migration from Zimbra 8.0.7 to 8.7.11. Great work!"
+
+### Alisson S. Conde - Paranatex Têxtil LTDA
+
+> "Congratulations on this excellent tool; it would have been impossible to migrate our company's legacy server without this project. The import was flawless: nearly 160 accounts with over 700GB of data, zero failures, and a fast, stable environment after import."
+
+### Fernando Lima - Gobah! Soluções em TI
+
+> "I used Z2Z to perform a migration between two Zimbra servers (8.8.11 > 8.8.12). My experience with the tool was outstanding; everything proceeded smoothly without errors. Previously, we attempted manual migration for mailboxes larger than 2GB which caused numerous timeouts and took nearly 3 days. With Z2Z, we completed the job in just one day without hassle."
+
+## Roadmap
+
+- Multi-Server environment support involving hostname substitution across multiple mailbox servers.
+- Incremental export and import capabilities to support phased migration strategies.
+- Domain migration automation.
+
+## Contributing
+
+Feedback, bug reports, and contributions are welcome. Please submit issues or pull requests via GitHub.
+
+## License
+
+DISTRIBUTED UNDER CREATIVE COMMONS LICENSE: Attribution-NonCommercial-ShareAlike (CC BY-NC-SA)
+
+This license allows others to adapt the original work non-commercially, as long as they credit the creator appropriately (original banner and Copyright) and license new creations under the same terms. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+## Contact
+
+- **Maintainer**: alsyundawy
+- **Original Developer**: Fabio Soares Schmidt <fabio@respirandolinux.com.br> | <https://respirandolinux.com.br>
