@@ -18,7 +18,7 @@
 #   bash util/export_calendar_resources.sh [output_dir]
 #   Default output_dir: ./export/calres
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 

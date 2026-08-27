@@ -5,7 +5,7 @@
 # Maintained by alsyundawy
 # Reference: https://wiki.zimbra.com/wiki/Obtain_all_the_forwards_per_each_account
 #
-# Version: 1.0.4
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -40,7 +40,7 @@ audit_forwards() {
 	local accounts
 
 	echo "================================================================================"
-	echo "                     Zimbra Mail Forwarding Audit v1.0.4"
+	echo "                     Zimbra Mail Forwarding Audit v1.0.6"
 	echo "================================================================================"
 	echo ""
 

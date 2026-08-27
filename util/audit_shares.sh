@@ -5,7 +5,7 @@
 # Maintained by alsyundawy
 # Reference: https://wiki.zimbra.com/wiki/How_to_find_all_shares
 #
-# Version: 1.0.4
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -40,7 +40,7 @@ audit_shares() {
 	local accounts
 
 	echo "================================================================================"
-	echo "                   Zimbra Mailbox Shares Audit Utility v1.0.4"
+	echo "                   Zimbra Mailbox Shares Audit Utility v1.0.6"
 	echo "================================================================================"
 	echo ""
 

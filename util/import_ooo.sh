@@ -17,7 +17,7 @@
 #   bash util/import_ooo.sh [input_dir]
 #   Default input_dir: ./export/ooo
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -140,7 +140,13 @@ for OOO_FILE in "${INPUT_BASE}"/*.ooo; do
 		zimbraPrefOutOfOfficeReplyEnabled) OOO_ENABLED="${VAL}" ;;
 		zimbraPrefOutOfOfficeFromDate)      OOO_FROM="${VAL}" ;;
 		zimbraPrefOutOfOfficeUntilDate)     OOO_UNTIL="${VAL}" ;;
-		zimbraPrefOutOfOfficeReply)         OOO_REPLY="${VAL}" ;;
+		zimbraPrefOutOfOfficeReply)         [[ -z "${OOO_REPLY}" ]] && OOO_REPLY="${VAL}" ;;
+		zimbraPrefOutOfOfficeReplyBase64)
+			if [[ -n "${VAL}" ]]; then
+				decoded="$(printf '%s' "${VAL}" | base64 -d 2>/dev/null || true)"
+				[[ -n "${decoded}" ]] && OOO_REPLY="${decoded}"
+			fi
+			;;
 		*)                                  : ;;
 		esac
 	done < "${OOO_FILE}"

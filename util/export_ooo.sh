@@ -20,7 +20,7 @@
 #   bash util/export_ooo.sh [output_dir]
 #   Default output_dir: ./export/ooo
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -165,12 +165,15 @@ while IFS= read -r ACCT; do
 		continue
 	fi
 
+	ooo_reply_b64="$(printf '%s' "${OOO_REPLY}" | base64 2>/dev/null | tr -d '\r\n' || echo "")"
+
 	OUT_FILE="${OUTPUT_BASE}/${ACCT}.ooo"
 	cat > "${OUT_FILE}" << EOF
 zimbraPrefOutOfOfficeReplyEnabled=${OOO_ENABLED}
 zimbraPrefOutOfOfficeFromDate=${OOO_FROM}
 zimbraPrefOutOfOfficeUntilDate=${OOO_UNTIL}
 zimbraPrefOutOfOfficeReply=${OOO_REPLY}
+zimbraPrefOutOfOfficeReplyBase64=${ooo_reply_b64}
 EOF
 
 	print_ok "  OOO settings saved : ${OUT_FILE}"

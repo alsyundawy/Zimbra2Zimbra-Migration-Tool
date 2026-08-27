@@ -5,7 +5,7 @@
 # Maintained by alsyundawy
 # Note: From version 8.5 onwards, disclaimers are per-domain (not universal)
 #
-# Version: 1.0.4
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -92,8 +92,8 @@ add_disclaimers() {
 # Main execution
 main() {
 	echo "================================"
-	echo "Zimbra Disclaimer Utility v1.0.4"
-	echo "================================"
+	echo "Zimbra Disclaimer Utility v1.0.6"
+	echo "================================================================================"
 	echo ""
 
 	# Warn user about domain-based disclaimers

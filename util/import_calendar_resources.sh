@@ -20,7 +20,7 @@
 #   bash util/import_calendar_resources.sh [input_dir]
 #   Default input_dir: ./export/calres
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 

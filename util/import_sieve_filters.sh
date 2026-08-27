@@ -21,7 +21,7 @@
 #   bash util/import_sieve_filters.sh [input_dir]
 #   Default input_dir: ./export/sieve
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 

@@ -22,7 +22,7 @@
 #   bash util/dns_diagnostic.sh [domain1 domain2 ...]
 #   Without arguments: checks all domains known to Zimbra (zmprov gad).
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -73,7 +73,7 @@ if [[ "${current_user}" != "zimbra" ]]; then
 fi
 
 if ! type dig &>/dev/null; then
-	print_error "ERROR: 'dig' command not found. Install bind-utils (RHEL) or dnsutils (Debian/Ubuntu)."
+	print_error "ERROR: 'dig' command not found. Install bind-utils (RHEL/Rocky/Alma) or bind9-dnsutils/dnsutils (Debian/Ubuntu)."
 	exit 1
 fi
 

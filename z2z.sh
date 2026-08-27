@@ -5,7 +5,7 @@
 # Copyright (C) 2016-2026 Fabio Soares Schmidt, alsyundawy
 # For more information, please read README.md and INSTALL
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -30,6 +30,14 @@ for _p in /opt/zimbra/bin /opt/zimbra/common/bin /opt/zimbra/common/sbin \
 	fi
 done
 export PATH
+
+# PID Lock to prevent simultaneous conflicting runs (MED-01)
+LOCK_FILE="/tmp/.z2z_migration.lock"
+exec 200>"${LOCK_FILE}"
+if ! flock -n 200 2>/dev/null; then
+	print_error "ERROR: Another instance of Z2Z is already running (locked by ${LOCK_FILE})."
+	exit 1
+fi
 
 # Main entry point
 main() {
@@ -162,7 +170,11 @@ main() {
 	export_path="$(get_export_destination)"
 	separator_char
 
-	# Generate full mailbox export/import scripts
+	# Pre-Flight Disk Capacity & Inode Check (IDE-106-05)
+	check_disk_capacity "${export_path}"
+	separator_char
+
+	# Generate full mailbox export/import scripts with checkpoint & parallel workers
 	execute_export_full "${export_path}" "${WORKDIR}"
 	separator_char
 
@@ -183,8 +195,8 @@ main() {
 	read -r -p "Do you want to start executing the mailbox export now in this session? (yes/no) " run_export_now
 	case "${run_export_now}" in
 	y | Y | yes | s | S | sim)
-		print_normal "Starting live mailbox export..."
-		bash "${WORKDIR}/script_export_FULL.sh"
+		print_normal "Starting live mailbox export (Concurrency: ${CONCURRENCY_WORKERS})..."
+		CONCURRENCY="${CONCURRENCY_WORKERS}" bash "${WORKDIR}/script_export_FULL.sh"
 		;;
 	*)
 		print_info "You can execute mailbox export later by running: ${WORKDIR}/script_export_FULL.sh"

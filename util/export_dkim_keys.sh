@@ -24,7 +24,7 @@
 #   bash util/export_dkim_keys.sh [output_dir]
 #   Default output_dir: ./export/dkim
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 

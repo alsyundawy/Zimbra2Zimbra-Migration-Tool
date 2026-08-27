@@ -6,9 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.0.6] - 2026-08-27
+
+### Added in v1.0.6
+
+- **State-Aware Checkpoint & Resume Engine**: Batch mailbox export and import scripts now maintain a `.z2z_checkpoint.db` state tracking file (`DONE`, `FAILED`, `MISSING`), allowing interrupted migrations to resume automatically without re-exporting completed accounts.
+- **Parallel Multi-Worker Orchestrator**: Added concurrent worker pool support (`CONCURRENCY=4..16`) for `script_export_FULL.sh` and `script_import_FULL.sh` with CPU/RAM load throttling to accelerate large multi-gigabyte migrations.
+- **Process-Table Credential Shield**: Replaced `-w "${ldap_password}"` command-line arguments in `ldapsearch`, `ldapadd`, and `ldapdelete` with temporary file descriptors (`-y` parameter, permission `0600`) in `/dev/shm` / `/tmp` cleaned via signal traps.
+- **Incremental Delta Mailbox Sync (`util/sync_delta_mailbox.sh`)**: Added REST timestamp query filtering (`getRestURL "//?fmt=tgz&query=after:\"YYYY/MM/DD\""`) for migrating only new incoming emails received during DNS cutover windows.
+- **Pre-Flight Disk Capacity & Inode Guard (`check_disk_capacity`)**: Added automatic free space and inode verification against destination mount points with a configurable safety threshold buffer.
+- **Post-Migration Data Integrity Verifier (`util/verify_migration.sh`)**: Added post-migration audit tool that reconciles mailbox storage sizes and folder counts between source inventory and destination mailboxes.
+- **Source Account Freeze Manager (`util/freeze_source_accounts.sh`)**: Added account maintenance status management (`--freeze` / `--unfreeze`) to prevent split-brain delivery during MX record propagation.
+- **Direct Remote SSH Mailbox Streaming (`util/stream_mailbox_direct.sh`)**: Added direct streaming pipeline from source REST API into target REST API over SSH without requiring local staging storage.
+- **Generic IMAP to Zimbra Migration Wrapper (`util/imapsync_wrapper.sh`)**: Added automated multi-account `imapsync` batch ingestion wrapper for migrating non-Zimbra mail servers (cPanel, Exchange, Dovecot, Google Workspace) to Zimbra.
+- **Executive HTML Summary Report Generator (`util/generate_migration_report.sh`)**: Added standalone HTML audit report generator with storage metrics and domain breakdowns.
+- **Safe Admin Lockout Protection**: Added validation in `skell/importar_ldap.sh` checking `CONTAS.ldif` for a valid replacement `uid=admin` record before allowing `ldapdelete` on the target server.
+- **Base64 Payload Encoding for Out-of-Office**: Added Base64 encoding support in `util/export_ooo.sh` and `util/import_ooo.sh` to preserve multi-line vacation auto-replies, special characters, and quotes without parser corruption.
+
+### Fixed in v1.0.6
+
+- **ShellCheck Compliance**: Audited all 20 bash scripts in the repository, resolving all shell syntax and variable warnings to achieve full zero-warning compliance.
+- **PID File Locking**: Added `flock` locking mechanism in `z2z.sh` to prevent simultaneous conflicting migration runs.
+
+---
+
 ## [1.0.5] - 2026-08-27
 
-### Added
+### Added in v1.0.5
 
 - **Webmail Signature & Identity Migration**: Added `util/export_signatures.sh` and `util/import_signatures.sh` to export and restore user webmail signatures via `zmprov gsig` and `zmprov csig`. Plain-text (`zimbraPrefMailSignature`) and HTML (`zimbraPrefMailSignatureHTML`) variants are captured. Persona identity mappings are preserved via `gid`/`mid`.
 - **Sieve Mail Filter Migration**: Added `util/export_sieve_filters.sh` and `util/import_sieve_filters.sh` to export and restore user Sieve filter scripts stored in `zimbraMailSieveScript`. Uses a temp-file approach to safely handle multi-line Sieve scripts without shell-quoting corruption. Validates target account existence before applying.
@@ -17,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Pre-Flight DNS Diagnostic Utility**: Added `util/dns_diagnostic.sh` to validate domain DNS records (MX, SPF, DKIM, DMARC) before migration. DKIM selectors are read automatically from `zmdkimkeyutil`. Local resolver reachability is also checked against `/etc/resolv.conf`. Outputs a color-coded diagnostic summary.
 - **DKIM Key Snapshot Utility**: Added `util/export_dkim_keys.sh` to snapshot DKIM selector and public key configuration per domain. Includes a prominent advisory recommending fresh key generation on the destination server using `zmdkimkeyutil -a -d <domain>` to follow security best practices and avoid private key reuse.
 
-### Fixed (Maintenance Pass — 2026-08-27)
+### Fixed in v1.0.5
 
 - **Critical: `set -e` arithmetic abort on first account** — All `((var++))` arithmetic increments in `func.sh` (inside `execute_export_full`, `execute_export_trash`, `execute_export_junk` generator loops) and in every `util/` script (`audit_shares.sh`, `audit_forwards.sh`, `mailbox_size.sh`, `add_disclaimer.sh`) lacked `|| true`. Under `set -e`, `((0))` evaluates to exit code 1 and aborts the script on the very first iteration. Fixed by appending `|| true` to every bare `((var++))` expression throughout the codebase. The same fix was applied to the counter expressions embedded inside generated batch scripts (`script_export_FULL.sh`, `script_import_FULL.sh`, TRASH, JUNK).
 - **Critical: Infinite recursion / stack overflow in interactive prompts** — Six functions in `func.sh` (`test_exec`, `enter_new_hostname`, `replace_hostname`, `export_mailboxes`, `get_export_destination`) and two in `skell/importar_ldap.sh` (`test_exec`, `test_import_admin`) used tail-call recursion for re-prompting on invalid input. An adversarial or accidental sequence of bad inputs would exhaust the call stack. Converted all to `while true` loops with `continue` for invalid input and `break`/`return`/`exit` for valid choices.
@@ -28,7 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **`check_mailbox()` non-numeric guard** — BSD `wc -l` emits leading whitespace; `mailbox_servers` could contain whitespace, making `((mailbox_servers > 1))` fail with a syntax error on some platforms. Added `${mailbox_servers//[^0-9]/}` stripping and a `:-0` fallback.
 - **Version headers** — Updated version string from `1.0.4` to `1.0.5` in `func.sh` and `skell/importar_ldap.sh`.
 
-### Changed
+### Changed in v1.0.5
 
 - **TODO**: Moved six pending tasks to Completed Tasks with version tag v1.0.5. Added seven new researched pending tasks covering incremental delta sync, Carbonio CE compatibility layer, imapsync integration, parallel multi-domain export, and ZCS 7 legacy attribute hardening.
 

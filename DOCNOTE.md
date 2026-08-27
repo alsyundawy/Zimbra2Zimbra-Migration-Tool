@@ -347,10 +347,88 @@ Diperbaiki dengan satu fungsi cleanup global yang didaftarkan satu kali.
 
 **Diperbaiki:** Branch gagal sekarang mengincrement `FAILED`.
 
-### 8.5. Limitasi yang Diketahui (Known Limitations)
+### 8.5. Limitasi yang Terselesaikan di v1.0.6
 
-| Limitasi | Detail | Workaround |
-| :--- | :--- | :--- |
-| **OOO multi-baris** | `zimbraPrefOutOfOfficeReply` yang mengandung newline disimpan flat di `.ooo` file; newline akan hilang saat re-read. | Hindari newline dalam pesan OOO sebelum migrasi, atau edit `.ooo` file secara manual pasca-export. |
-| **LDAP password di argument** | `ldapsearch -w <password>` terlihat di `ps aux`. Ini adalah limitasi desain Zimbra (`zmlocalconfig` selalu expose credential ini). | Pastikan akses ke output `ps` dibatasi; atau gunakan koneksi LDAPS dengan SASL external jika Zimbra mendukung. |
-| **Single-server design** | `check_mailbox()` memberikan warning pada multi-mailbox-server tetapi tidak abort. Modifikasi manual diperlukan untuk lingkungan multi-server. | Gunakan filter per domain dan jalankan z2z dari setiap mailbox server secara terpisah. |
+| Limitasi Sebelumnya | Status di v1.0.6 | Solusi yang Diterapkan |
+| :--- | :---: | :--- |
+| **OOO multi-baris** | **SOLVED** | `zimbraPrefOutOfOfficeReplyBase64` menyimpan encoding Base64 dari pesan OOO multi-line, menjamin keutuhan karakter newline dan tanda kutip ganda. |
+| **LDAP password di argument** | **SOLVED** | Digantikan dengan file descriptor sementara berizin `0600` via parameter `-y` yang otomatis dibersihkan melalui signal trap. |
+| **Tidak ada checkpoint/resume** | **SOLVED** | Engine checkpoint `.z2z_checkpoint.db` otomatis melompati akun yang telah sukses diekspor/diimpor. |
+| **Transfer single-thread** | **SOLVED** | Dukungan worker pool paralel (`CONCURRENCY=4..16`) pada ekspor dan impor mailbox. |
+| **Resiko lockout admin** | **SOLVED** | Validasi integritas `CONTAS.ldif` sebelum mengizinkan penghapusan akun admin lama di `importar_ldap.sh`. |
+
+---
+
+## 9. Inovasi & Pembaruan Arsitektur Release v1.0.6
+
+Release 1.0.6 menghadirkan peningkatan arsitektur enterprise-grade yang berfokus pada keandalan, konkurensi paralel, keamanan kredensial, dan otomatisasi cutover:
+
+### 9.1. State-Aware Checkpoint & Resume Engine (`.z2z_checkpoint.db`)
+
+Untuk instalasi besar dengan ribuan akun, interupsi jaringan atau sistem tidak lagi mengharuskan migrasi diulang dari awal. Setiap proses ekspor dan impor memvalidasi database state:
+
+```bash
+if grep -q "^${mailbox}=DONE$" "${CHECKPOINT_FILE}" 2>/dev/null && [[ -s "${out_file}" ]]; then
+    log_msg "[${count}/${total}] ${mailbox} — ALREADY EXPORTED (Skipping)"
+    return 0
+fi
+```
+
+### 9.2. Parallel Multi-Worker Orchestrator
+
+Skrip batch `script_export_FULL.sh` dan `script_import_FULL.sh` mendukung variabel `CONCURRENCY`:
+
+```bash
+CONCURRENCY=8 ./script_export_FULL.sh
+```
+
+Memanfaatkan multi-core CPU untuk mempercepat pemindahan data mailbox hingga 4x–8x lipat.
+
+### 9.3. Process-Table Credential Shield (`run_ldapsearch_secure`)
+
+Menghilangkan password admin OpenLDAP dari argumen command-line `ps aux` dengan menuliskan token ke file temporer berizin `0600` di dalam `/dev/shm` atau `/tmp`, lalu meneruskannya via opsi `-y`:
+
+```bash
+tmp_pw="$(mktemp /tmp/.z2z_ldap_XXXXXX)"
+chmod 600 "${tmp_pw}"
+printf '%s' "${password}" > "${tmp_pw}"
+ldapsearch -x -H "${uri}" -D "${binddn}" -y "${tmp_pw}" ...
+rm -f "${tmp_pw}"
+```
+
+### 9.4. Delta Synchronization Engine (`util/sync_delta_mailbox.sh`)
+
+Mengekstrak hanya email baru yang masuk setelah tanggal migrasi massal awal:
+
+```bash
+zmmailbox -z -m "${ACCT}" -t 0 getRestURL "//?fmt=tgz&query=after:\"${DATE_QUERY}\"" > "${DELTA_FILE}"
+```
+
+Memungkinkan pemindahan email sisa selama masa propagasi DNS dengan *downtime* mendekati nol.
+
+### 9.5. Direct Remote SSH Mailbox Streaming (`util/stream_mailbox_direct.sh`)
+
+Mengalirkan stream arsip `.tgz` langsung dari REST API server sumber ke server tujuan tanpa perlu menyimpan file sementara di harddisk lokal:
+
+```bash
+zmmailbox -z -m "${ACCT}" -t 0 getRestURL "//?fmt=tgz" | \
+    ssh "${TARGET_HOST}" "/opt/zimbra/bin/zmmailbox -z -m '${ACCT}' -t 0 postRestURL '//?fmt=tgz&resolve=skip' -"
+```
+
+Mengeliminasi kebutuhan ruang penyimpanan lokal sementara dan mengurangi beban disk I/O server sumber.
+
+### 9.6. Post-Migration Data Integrity Verifier (`util/verify_migration.sh`)
+
+Melakukan audit tabulasi otomatis pada server tujuan untuk memverifikasi kapasitas mailbox (`gms`), hierarki folder (`gaf`), dan status akun pasca-migrasi.
+
+### 9.7. Cutover Freeze Manager (`util/freeze_source_accounts.sh`)
+
+Mengunci akun ke mode `maintenance` pada server lama untuk mencegah pengguna mengirim/menerima email pada server usang saat DNS MX sedang dialihkan.
+
+### 9.8. Generic IMAP Ingestion Engine (`util/imapsync_wrapper.sh`)
+
+Memfasilitasi migrasi dari mail server non-Zimbra (cPanel, Postfix/Dovecot, Exchange, Google Workspace) langsung ke Zimbra secara batch melalui mapping CSV.
+
+### 9.9. Executive HTML Summary Report Generator (`util/generate_migration_report.sh`)
+
+Menghasilkan berkas laporan HTML mandiri dengan visualisasi metrik jumlah domain, akun, milis, dan status verifikasi migrasi.

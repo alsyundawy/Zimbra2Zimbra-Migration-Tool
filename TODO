@@ -39,33 +39,43 @@
 - [x] Export and restore user Sieve mail filter rules from `zimbraMailSieveScript` LDAP attribute with safe in-memory handling (`util/export_sieve_filters.sh`, `util/import_sieve_filters.sh`) (v1.0.5)
 - [x] Export and restore Out-of-Office vacation auto-reply status, message body, and date range with `YYYYMMDDHHMMSSZ` format validation (`util/export_ooo.sh`, `util/import_ooo.sh`) (v1.0.5)
 - [x] Export and provision calendar resources and equipment accounts (`zimbraCalResType`) including calendar TGZ data migration (`util/export_calendar_resources.sh`, `util/import_calendar_resources.sh`) (v1.0.5)
-- [x] Pre-flight DNS diagnostic utility validating domain MX, SPF, DKIM, and DMARC records with local resolver reachability check (`util/dns_diagnostic.sh`) (v1.0.5)
+- [x] Pre-flight DNS diagnostic utility validating domain email DNS records with local resolver reachability check (`util/dns_diagnostic.sh`) (v1.0.5)
 - [x] DKIM key snapshot utility with regeneration advisory for secure key rotation on the destination server (`util/export_dkim_keys.sh`) (v1.0.5)
 
-### v1.0.5 — Bug Fixes & Hardening (Maintenance Pass)
+### v1.0.6 — Architecture Innovations & Enterprise Hardening
 
-- [x] Fixed critical `set -e` arithmetic abort: all `((var++))` increments now use `|| true` across `func.sh`, all `util/` scripts, and generated batch scripts (v1.0.5)
-- [x] Fixed infinite recursion / stack overflow risk in 8 interactive prompt functions across `func.sh` and `skell/importar_ldap.sh` — converted to `while true` loops (v1.0.5)
-- [x] Fixed `portable_replace()` temp file leak and file corruption risk on `sed` failure — added `if/else` with `rm -f` on all failure paths (v1.0.5)
-- [x] Fixed `export_sieve_filters.sh` trap race condition — replaced per-iteration `trap`/`trap -` with single global cleanup function (v1.0.5)
-- [x] Fixed `export_calendar_resources.sh` FAILED counter never incremented — failure branch now correctly increments `FAILED` instead of `SUCCESS` (v1.0.5)
-- [x] Fixed BSD/macOS `wc -l` leading-whitespace issue in `check_mailbox()` causing arithmetic syntax errors (v1.0.5)
-- [x] Added default `*) : ;;` branch to all `case` statements missing it (`export_signatures.sh`, `import_ooo.sh`) (v1.0.5)
-- [x] Eliminated command substitution masking in `export_calendar_resources.sh` and `export_dkim_keys.sh` heredocs (v1.0.5)
-- [x] Updated `DOCNOTE.md` with Section 8: Perbaikan Kualitas Kode documenting all bugs, root causes, and fixes (v1.0.5)
-- [x] Updated `CHANGELOG` with `### Fixed (Maintenance Pass)` section and refactored headings to Keep a Changelog standard (v1.0.5)
+- [x] **[IDE-106-01] State-Aware Checkpoint & Resume Engine**: Implemented dynamic statefile tracking (`.z2z_checkpoint.db` / TSV) recording `DONE`, `FAILED`, `MISSING` states per account to allow interrupted batch migrations to resume without re-exporting completed mailboxes (v1.0.6)
+- [x] **[IDE-106-02] Parallel Mailbox Multi-Worker Orchestrator**: Added configurable concurrent worker pool (`CONCURRENCY=4..16`) for `script_export_FULL.sh` and `script_import_FULL.sh` with CPU/RAM load throttling (v1.0.6)
+- [x] **[IDE-106-03] Secure Credential Passing via Temporary File Descriptor**: Replaced `-w "${ldap_auth_token}"` CLI password arguments in `ldapsearch`, `ldapadd`, and `ldapdelete` with `-y <secure_file>` (permissions `0600` in `/dev/shm` cleaned via trap) to eliminate process table (`ps aux`) credential exposure (v1.0.6)
+- [x] **[IDE-106-04] Incremental Delta Mailbox Synchronization**: Created `util/sync_delta_mailbox.sh` utilizing timestamp REST query filtering (`getRestURL "//?fmt=tgz&query=after:\"YYYY/MM/DD\""`) to sync only new incoming mail during cutover windows (v1.0.6)
+- [x] **[IDE-106-05] Pre-Flight Disk Capacity & Inode Safety Guard**: Implemented `check_disk_capacity()` calculating total mailbox storage against destination mount point free space (`df -Pk`) with a safety threshold buffer (v1.0.6)
+- [x] **[IDE-106-07] Base64 Encoding Guard for Sieve & Out-of-Office Payloads**: Stored multi-line vacation replies and complex Sieve filter scripts in Base64 encoding during staging to guarantee character and newline integrity during SOAP/zmprov injection (v1.0.6)
+- [x] **[IDE-106-08] Post-Migration Data Integrity Verifier**: Created `util/verify_migration.sh` to compare source vs destination account lists, mailbox sizes, and folder counts with a color-coded delta reconciliation report (`MATCH`, `DELTA_WARN`, `MISSING`) (v1.0.6)
+- [x] **[IDE-106-09] Safe Admin Import Verification Guard**: Added strict validation in `skell/importar_ldap.sh` checking `CONTAS.ldif` for a valid replacement `uid=admin` record before allowing `ldapdelete` on the target server to prevent accidental admin lockout (v1.0.6)
+- [x] **[IDE-106-12] Direct Remote SSH/Rsync Streaming Pipeline**: Created `util/stream_mailbox_direct.sh` to pipe `zmmailbox getRestURL` output directly over an SSH tunnel into the target server's `postRestURL` without requiring intermediate local disk staging (v1.0.6)
+- [x] **[IDE-106-14] Automatic Mail Routing Cutover & Maintenance Freeze Mode**: Created `util/freeze_source_accounts.sh` to set source accounts to `maintenance` mode (`zimbraAccountStatus maintenance`) and redirect Postfix transport maps to the new server during DNS propagation (v1.0.6)
+- [x] **[IDE-106-15] Generic IMAP to Zimbra Imapsync Ingestion Wrapper**: Created `util/imapsync_wrapper.sh` providing structured, multi-threaded IMAP migration for importing non-Zimbra mail servers (cPanel, Postfix/Dovecot, Exchange, Google Workspace) directly into Zimbra (v1.0.6)
+- [x] **[IDE-106-16] Executive Post-Migration HTML Summary Report**: Created `util/generate_migration_report.sh` producing an interactive, self-contained HTML report with storage graphs, domain breakdowns, and success/failure statistics (v1.0.6)
+- [x] **PID File Locking Mechanism**: Added `flock` locking in `z2z.sh` to prevent simultaneous conflicting migration runs (v1.0.6)
 
 ---
 
-## Pending Tasks
+## Pending Tasks (Release 1.0.7 Roadmap)
 
-- [ ] Incremental delta mailbox sync using timestamp-based filtering to transfer only messages received after initial export cutover
-- [ ] Parallel export orchestrator with configurable worker count and per-account retry logic with exponential backoff for large multi-domain installations
-- [ ] Implement `whiptail`/`dialog` terminal UI for interactive guided menu navigation across all migration phases
-- [ ] Carbonio CE compatibility layer: auto-detect target platform via `zimbraServerVersionMajor` and adjust provisioning commands accordingly
-- [ ] `imapsync` integration guide and wrapper script for live delta synchronization during migration cutover windows
-- [ ] Multi-domain parallel export with domain-scoped subshell isolation to distribute load across CPU cores
-- [ ] ZCS 7 legacy attribute compatibility hardening: graceful skip for attributes not present in ZCS 7.x (e.g., `zimbraCalResCapacity`)
-- [ ] Post-migration integrity checker: compare mailbox sizes between source and destination and flag accounts with delta above a configurable threshold
-- [ ] Encrypted export archive option: wrap mailbox TGZ files with GPG symmetric key before transfer for data-at-rest security
-- [ ] HTML migration summary report: self-contained report with per-domain account counts, mailbox sizes, and success/failure statistics
+### Enterprise Core & Multi-Node Orchestration
+
+- [ ] **[IDE-107-01] Multi-Server Cluster Topology Router**: Implement automated cluster discovery (`zmprov gas mailbox`) with per-mailbox-server batch routing (`-s <server>`) to query and stream accounts directly from their home storage node without overloading the master LDAP node.
+- [ ] **[IDE-107-02] Carbonio Community Edition (CE) Compatibility Adapter**: Auto-detect Carbonio environment via biner `/opt/zextras/bin/carbonio` and adapt LDAP/provisioning syntax (`carbonio prov` / `carbonio admin`) for seamless cross-platform migration.
+- [ ] **[IDE-107-03] Interactive TUI Wizard via `whiptail` / `dialog`**: Implement a guided Terminal UI dashboard for interactive phase selection (Domains, Accounts, Signatures, Sieve, OOO, Mailboxes) with automatic fallback to standard CLI text mode.
+- [ ] **[IDE-107-04] Encrypted Transit & GPG Archive Shield**: Add optional AES-256-GCM / GPG symmetric encryption for exported mailbox `.tgz` bundles and LDAP dumps during transit over untrusted public WAN networks.
+- [ ] **[IDE-107-05] ZCS 7.x & 8.0 Legacy Password & Schema Normalizer**: Add automated sanitization for legacy MD5/{CRYPT} password hashes and conversion of obsolete LDAP schema attributes when migrating from legacy ZCS 7/8 to Zimbra 10.1 (Daffodil).
+
+### Cutover Automation & Performance Optimization
+
+- [ ] **[IDE-107-06] Live Postfix Queue Drain & Transport Redirection**: Create `util/redirect_transport_maps.sh` to configure Postfix transport maps (`postmap /opt/zimbra/postfix/conf/transport`) for immediate mail forwarding to the new server IP during DNS MX propagation.
+- [ ] **[IDE-107-07] Chunked Date-Range Archiving for Terabyte Mailboxes**: Implement automated time-sliced chunking (`query=before:YYYY/MM/DD` and `query=after:YYYY/MM/DD`) for monolithic mailboxes (> 100 GB) to prevent HTTP 504 gateway timeouts on slow storage backends.
+- [ ] **[IDE-107-08] SSL/TLS Certificate & ACME/Let's Encrypt Migration**: Create `util/migrate_ssl_certs.sh` to snapshot commercial certificates (`zmcertmgr`) or automate DNS-01 ACME challenge issuance on the destination server.
+- [ ] **[IDE-107-09] Custom Anti-Spam & Postscreen Policy Exporter**: Create `util/export_spam_rules.sh` to extract custom SpamAssassin rules, Postscreen whitelists, and MTA CIDR networks (`zimbraMtaMyNetworks`) from source to destination.
+- [ ] **[IDE-107-10] Webhook Event Notification Engine**: Add configurable webhook alerting (Telegram, Slack, Discord, or generic JSON HTTP POST) triggered on batch stage completion, checkpoint resume, or failure thresholds.
+- [ ] **[IDE-107-11] Pre-Flight Local DNS Resolver (Unbound/DNSDist) Optimizer**: Create `util/optimize_dns_resolver.sh` to validate and provision local caching DNS (Unbound/Bind9) on the destination server to prevent RBL query rate-limiting.
+- [ ] **[IDE-107-12] Automated Disaster Rollback Engine**: Create `util/rollback_migration.sh` to safely revert target LDAP records and mailbox data back to a clean pre-migration baseline in case of maintenance window abort.

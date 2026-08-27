@@ -6,7 +6,7 @@
 # Useful for pre-migration planning and post-migration validation
 # Reference: https://wiki.zimbra.com/wiki/Get_all_user%27s_mailbox_size_from_CLI
 #
-# Version: 1.0.4
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -60,7 +60,7 @@ generate_report() {
 	local accounts
 
 	echo "================================================================================"
-	echo "                     Zimbra Mailbox Size Report v1.0.4"
+	echo "                     Zimbra Mailbox Size Report v1.0.6"
 	echo "================================================================================"
 	echo ""
 

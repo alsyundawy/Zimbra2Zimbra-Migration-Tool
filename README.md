@@ -1,6 +1,6 @@
-# Z2Z - ZIMBRA TO ZIMBRA MIGRATION SUITE
+# Z2Z — Zimbra to Zimbra Migration Suite
 
-Enterprise Zero-Timeout, Cross-Version & Zero-Data-Loss Migration Engine for Zimbra Collaboration Suite (ZCS 7.x – 10.1.x & Carbonio)
+Enterprise Zero-Timeout, Cross-Version & Zero-Data-Loss Migration Engine for Zimbra Collaboration Suite (ZCS 7.x – 10.1.x & Carbonio CE)
 
 Maintained by **Harry Dertin Sutisna Alsyundawy** | Original Creator **Fabio Soares Schmidt**
 
@@ -24,17 +24,18 @@ Maintained by **Harry Dertin Sutisna Alsyundawy** | Original Creator **Fabio Soa
 
 Banyak administrator mail server menghadapi kendala saat melakukan upgrade in-place pada sistem operasi yang telah *End-of-Life (EOL)* (seperti CentOS 5/6/7 atau Ubuntu 10.04/12.04/14.04/16.04/18.04), di mana *in-place upgrade* sering merusak database MySQL/MariaDB atau biner OpenLDAP. **Z2Z** menyediakan solusi migrasi terisolasi (*clean-state migration*) dengan mengekstrak seluruh objek direktori LDAP (Email Domains, Global Config, Class of Service, Akun, Hash Password Asli, Mail Alias, Distribution Lists) serta seluruh data mailbox (Email, Kalender, Kontak, Task, Briefcase, Preferences) melalui stream REST API murni, memungkinkan migrasi ke server baru yang bersih tanpa membawa sisa file sampah atau jejak malware dari server lama.
 
-**Ringkasan Keunggulan Flagship Release v1.0.5:**
+**Ringkasan Keunggulan Flagship Release v1.0.6:**
 
-- **Webmail Signatures & Identities Migration:** Migrasi lengkap tanda tangan webmail teks (`zimbraPrefMailSignature`) dan HTML (`zimbraPrefMailSignatureHTML`) beserta pemetaan persona (`gid`/`mid`) via `util/export_signatures.sh` dan `util/import_signatures.sh`.
-- **Sieve Mail Filters Migration:** Ekspor dan impor aturan filter email Sieve (`zimbraMailSieveScript`) secara aman tanpa korupsi multiline via `util/export_sieve_filters.sh` dan `util/import_sieve_filters.sh`.
-- **Out-of-Office Vacation Auto-Reply:** Migrasi konfigurasi vacation responder, isi pesan, dan rentang tanggal dengan validasi format `YYYYMMDDHHMMSSZ` via `util/export_ooo.sh` dan `util/import_ooo.sh`.
-- **Calendar Resources & Equipment Accounts:** Ekspor, provisi, dan migrasi arsip kalender TGZ untuk resource ruangan/peralatan (`zimbraCalResType`) via `util/export_calendar_resources.sh` dan `util/import_calendar_resources.sh`.
-- **Pre-Flight DNS Diagnostic Utility:** Validasi menyeluruh rekaman DNS (MX, SPF, DKIM, DMARC) dan reachability resolver lokal sebelum migrasi via `util/dns_diagnostic.sh`.
-- **DKIM Key Snapshot Utility:** Pencatatan snapshot selector dan public key DKIM per domain via `util/export_dkim_keys.sh` dengan panduan regenerasi key baru di destination.
-- **Enterprise Code Hardening:** Eliminasi seluruh potensi abort `set -e` pada operasi aritmetika, refactoring rekursi tak terbatas ke infinite-safe loops, pencegahan kebocoran berkas temporer, dan verifikasi zero-defect ShellCheck.
-- **Automated Domain & Single-Pass Alias Migration:** Ekspor/impor domain otomatis via `DOMINIOS.ldif` / `create_domains.sh` dan query atomik alias berkecepatan tinggi.
-- **Technical Manual & Architecture:** Dokumentasi teknis lengkap tersedia di [DOCNOTE.md](DOCNOTE.md) dan riwayat rilis di [CHANGELOG](CHANGELOG).
+- **State-Aware Checkpoint & Resume Engine:** Melacak status migrasi per-akun secara dinamis (`.z2z_checkpoint.db`), memungkinkan batch migration yang terinterupsi untuk dilanjutkan seketika tanpa re-export data.
+- **Parallel Multi-Worker Orchestrator:** Dukungan worker concurrent (`CONCURRENCY=4..16`) pada ekspor & impor mailbox dengan kontrol beban CPU/RAM dan throttling otomatis.
+- **Secure Process-Table Credential Shield:** Menghilangkan ekspresi password terbuka di argumen CLI `ps aux` dengan mekanisme file deskriptor temporer berizin `0600` yang dibersihkan via signal trap.
+- **Incremental Delta Mailbox Sync (`util/sync_delta_mailbox.sh`):** Sinkronisasi pesan baru selama jendela cutover DNS menggunakan filter query waktu REST (`after:YYYY/MM/DD`).
+- **Pre-Flight Storage & Inode Guard:** Validasi otomatis kapasitas disk dan ketersediaan inode pada mount point target sebelum batch dump dijalankan.
+- **Direct Remote SSH Streaming Pipeline (`util/stream_mailbox_direct.sh`):** Streaming stream REST `.tgz` langsung antar-server via SSH tanpa memerlukan penyimpanan staging lokal (menghemat kapasitas disk & I/O).
+- **Post-Migration Data Integrity Verifier (`util/verify_migration.sh`):** Validasi otomatis ukuran mailbox dan jumlah folder source vs target dengan laporan audit tabulasi.
+- **Maintenance Freeze & Cutover Guard (`util/freeze_source_accounts.sh`):** Mengunci akun sumber ke status `maintenance` selama propagasi DNS untuk mencegah *split-brain delivery*.
+- **Generic IMAP to Zimbra Ingestion Wrapper (`util/imapsync_wrapper.sh`):** Otomasi migrasi batch akun dari server non-Zimbra (cPanel, Exchange, Dovecot, Google Workspace) langsung ke Zimbra.
+- **Executive HTML Summary Report (`util/generate_migration_report.sh`):** Laporan audit migrasi mandiri berbasis HTML modern dengan metrik statistik storage dan domain breakdown.
 
 ---
 
@@ -51,11 +52,11 @@ Langkah cepat eksekusi migrasi dari server sumber ke server tujuan:
    ./z2z.sh
    ```
 
-   Setelah ekspor selesai, jalankan batch mailbox export:
+   Setelah ekspor selesai, jalankan batch mailbox export (mendukung paralel worker):
 
    ```bash
    cd export/
-   ./script_export_FULL.sh
+   CONCURRENCY=4 ./script_export_FULL.sh
    ```
 
 2. **Transfer Data ke Server Tujuan:**
@@ -70,7 +71,7 @@ Langkah cepat eksekusi migrasi dari server sumber ke server tujuan:
    su - zimbra
    cd /tmp/export/
    ./importar_ldap.sh
-   ./script_import_FULL.sh
+   CONCURRENCY=4 ./script_import_FULL.sh
    ```
 
 ---
@@ -80,9 +81,9 @@ Langkah cepat eksekusi migrasi dari server sumber ke server tujuan:
 Skrip didesain secara mandiri (*zero external compilation / pure shell*) menggunakan utilitas bawaan Zimbra dan POSIX Bash 4.1+ hingga 5.x:
 
 - **Ubuntu Linux:** 10.04, 12.04, 14.04, 16.04, 18.04, 20.04, 22.04, 24.04 LTS
-- **Debian GNU/Linux:** 6 (Squeeze), 7 (Wheezy), 8 (Jessie), 9 (Stretch), 10 (Buster), 11 (Bullseye), 12 (Bookworm) (Kompatibilitas penuh)
+- **Debian GNU/Linux:** 6 (Squeeze) hingga 12 (Bookworm) (Kompatibilitas penuh)
 - **Enterprise Linux (EL):** RHEL 5/6/7/8/9, CentOS 5/6/7/8/9 Stream, Rocky Linux 8/9, AlmaLinux 8/9, Oracle Linux 7/8/9, SLES 11/12
-- **Varian Zimbra Didukung:** ZCS 7.x, 8.0–8.6, 8.7–8.8.15, 9.0.0, 10.0.x, 10.1.x (FOSS / NE), serta Carbonio Community Edition.
+- **Varian Zimbra Didukung:** ZCS 7.x, 8.0–8.6, 8.7–8.8.15, 9.0.0, 10.0.x, 10.1.x (FOSS / Network Edition), serta Carbonio Community Edition.
 
 ---
 
@@ -105,12 +106,14 @@ Modul ini secara otomatis mengganti referensi `zimbraMailHost`, URL LDAP, dan at
 
 ```mermaid
 flowchart TD
-    Start([Mulai Migrasi Z2Z]) --> Phase1[Phase 1: Pre-Migration Discovery & Storage/Shares Audit]
-    Phase1 --> Phase2[Phase 2: Single-Pass LDAP, Domain & Batch Script Export]
-    Phase2 --> Phase3[Phase 3: Secure Data Staging & SCP Transfer]
-    Phase3 --> Phase4[Phase 4: Automated Domain & LDAP Ingestion]
-    Phase4 --> Phase5[Phase 5: Non-Destructive Mailbox Merging resolve=skip]
-    Phase5 --> Verify[Post-Migration Verification & Permission Healing]
+    Start([Mulai Migrasi Z2Z]) --> Phase1[Phase 1: Pre-Flight Discovery, Storage & DNS Diagnostics]
+    Phase1 --> Phase2[Phase 2: Secure LDAP, Domain & Batch Script Export]
+    Phase2 --> Phase3[Phase 3: Parallel Mailbox Archiving with State Checkpoints]
+    Phase3 --> Phase4[Phase 4: Encrypted / SSH Transit to Target Server]
+    Phase4 --> Phase5[Phase 5: Automated Domain, COS & Account Ingestion]
+    Phase5 --> Phase6[Phase 6: Non-Destructive Mailbox Merging resolve=skip]
+    Phase6 --> Phase7[Phase 7: Incremental Delta Sync during DNS Cutover]
+    Phase7 --> Verify[Phase 8: Post-Migration Integrity Audit & Verification]
     Verify --> Finish([Migrasi Selesai - Server Siap Produksi])
 ```
 
@@ -147,15 +150,15 @@ Format `.tgz` REST API mempertahankan seluruh hierarki folder kustom, penanda fl
 
 ---
 
-## Diagnostic, Migration & Reporting Utilities
+## Suite of Diagnostic, Migration & Security Utilities
 
-Direktori `util/` menyediakan utilitas operasional yang dapat dijalankan secara mandiri:
+Direktori `util/` menyediakan 17 utilitas operasional yang dapat dijalankan secara mandiri:
 
 ```bash
-# 1. Validasi Pra-Migrasi DNS (MX, SPF, DKIM, DMARC, Resolver Reachability)
+# 1. Pre-Flight DNS Diagnostic & Resolver Reachability Check
 ./util/dns_diagnostic.sh
 
-# 2. Snapshot Konfigurasi & Kunci Publik DKIM Per-Domain
+# 2. Snapshot Konfigurasi DKIM Per-Domain
 ./util/export_dkim_keys.sh
 
 # 3. Ekspor & Impor Tanda Tangan Webmail Serta Persona/Identitas Pengguna
@@ -174,16 +177,30 @@ Direktori `util/` menyediakan utilitas operasional yang dapat dijalankan secara 
 ./util/export_calendar_resources.sh
 ./util/import_calendar_resources.sh
 
-# 7. Laporan Ukuran Mailbox Seluruh Akun (Bytes, KB, MB, GB, TB)
+# 7. Sinkronisasi Delta Mailbox Berdasarkan Tanggal Cutover
+./util/sync_delta_mailbox.sh 2026/08/20 ./export/delta
+
+# 8. Verifikasi & Audit Integritas Data Pasca-Migrasi
+./util/verify_migration.sh
+
+# 9. Penguncian Status Akun Sumber ke Maintenance Mode Saat Cutover
+./util/freeze_source_accounts.sh --freeze
+
+# 10. Streaming Langsung Mailbox via SSH Tunnel Tanpa Staging Disk
+./util/stream_mailbox_direct.sh zimbra@target-server.com
+
+# 11. Otomasi Migrasi Batch Generic IMAP (cPanel/Exchange/Gmail) ke Zimbra
+./util/imapsync_wrapper.sh imap.oldserver.com mail.newserver.com accounts.csv
+
+# 12. Laporan Eksekutif HTML Summary Report
+./util/generate_migration_report.sh ./export/migration_report.html
+
+# 13. Audit Kapasitas Storage & Forwarding Rules
 ./util/mailbox_size.sh
-
-# 8. Audit Aturan Penerusan Email (Admin Forward & User Preference)
 ./util/audit_forwards.sh
-
-# 9. Audit Hak Akses Folder Bersama, Kalender & Kontak (Shares)
 ./util/audit_shares.sh
 
-# 10. Penambahan Disclaimer / Tanda Tangan Wajib Per-Domain (ZCS 8.5+)
+# 14. Penambahan Disclaimer Wajib Per-Domain (ZCS 8.5+)
 sudo ./util/add_disclaimer.sh
 ```
 
@@ -191,37 +208,59 @@ sudo ./util/add_disclaimer.sh
 
 ## Feature Evolution Matrix
 
-| Fitur / Kemampuan Sistem | v0.9.9 | v1.0.0b | v1.0.1 | v1.0.2 | v1.0.3 | v1.0.4 | v1.0.5 (Current) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Ekspor Objek Direktori LDAP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Lengkap)** |
-| **Bypass Timeout Mailbox Besar (`-t 0`)** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Unlimited)** |
-| **Safe Mailbox Merging (`resolve=skip`)** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Non-Destructive)** |
-| **Dukungan `zimbraGroup` pada Milis** | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | **✅** |
-| **Multi-Server Detection Warning** | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | **✅** |
-| **Lokalisasi Bahasa Inggris Penuh** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅** |
-| **Audit ShellCheck & Linter Sempurna** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (0 Warning)** |
-| **Automated Domain Migration** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Auto Provision)** |
-| **Mailbox Filter Modes (Active/Domain)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Interactive)** |
-| **Global Config & MTA Snapshot** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅** |
-| **Shared Folders & Calendar Audit** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (`audit_shares.sh`)** |
-| **Single-Pass Atomic Alias Export** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Ultra Fast)** |
-| **Anchored System Account Shield** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Zero False-Exclusion)** |
-| **Universal LDAP URL Fallback Resolver** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (LDAPS & Custom Port)** |
-| **Progress-Aware Batch Script Generator** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Real-time Logger)** |
-| **Portable Stream Replacement (GNU/BSD)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (All OS)** |
-| **Webmail Signatures & Identities** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export/import_signatures.sh`)** |
-| **Sieve Mail Filters Migration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export/import_sieve_filters.sh`)** |
-| **Out-of-Office Vacation Responders** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export/import_ooo.sh`)** |
-| **Calendar Resources & Equipment** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export/import_calendar_resources.sh`)** |
-| **Pre-Flight DNS Diagnostics** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`dns_diagnostic.sh`)** |
-| **DKIM Key Snapshot & Rotation Advisory** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`export_dkim_keys.sh`)** |
+| Fitur / Kemampuan Sistem | v0.9.9 | v1.0.0b | v1.0.1 | v1.0.2 | v1.0.3 | v1.0.4 | v1.0.5 | v1.0.6 (Current) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Ekspor Objek Direktori LDAP** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Lengkap & Secure)** |
+| **Bypass Timeout Mailbox Besar (`-t 0`)** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Unlimited)** |
+| **Safe Mailbox Merging (`resolve=skip`)** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅ (Non-Destructive)** |
+| **Dukungan `zimbraGroup` pada Milis** | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | **✅** |
+| **Multi-Server Detection Warning** | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | **✅ (Cluster Aware)** |
+| **Lokalisasi Bahasa Inggris Penuh** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | **✅** |
+| **Audit ShellCheck & Linter Sempurna** | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | **✅ (0 Warning)** |
+| **Automated Domain Migration** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (Auto Provision)** |
+| **Mailbox Filter Modes (Active/Domain)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (Interactive)** |
+| **Global Config & MTA Snapshot** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅** |
+| **Shared Folders & Calendar Audit** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (`audit_shares.sh`)** |
+| **Single-Pass Atomic Alias Export** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (Ultra Fast)** |
+| **Anchored System Account Shield** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (Zero False-Exclusion)** |
+| **Universal LDAP URL Fallback Resolver** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (LDAPS & Custom Port)** |
+| **Progress-Aware Batch Script Generator** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (Real-time Logger)** |
+| **Portable Stream Replacement (GNU/BSD)** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | **✅ (All OS)** |
+| **Webmail Signatures & Identities** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (`export/import_signatures.sh`)** |
+| **Sieve Mail Filters Migration** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (`export/import_sieve_filters.sh`)** |
+| **Out-of-Office Vacation Responders** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (Base64 Safe Payload)** |
+| **Calendar Resources & Equipment** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (`export/import_calendar_resources.sh`)** |
+| **Pre-Flight DNS Diagnostics** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (`dns_diagnostic.sh`)** |
+| **DKIM Key Snapshot & Rotation Advisory** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | **✅ (`export_dkim_keys.sh`)** |
+| **State-Aware Checkpoint & Resume Engine** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`.z2z_checkpoint.db`)** |
+| **Parallel Multi-Worker Mailbox Export** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`CONCURRENCY=4..16`)** |
+| **Secure Process-Table Credential Passing** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`-y` 0600 Temp Descriptors)** |
+| **Incremental Delta Mailbox Sync** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`sync_delta_mailbox.sh`)** |
+| **Pre-Flight Storage & Inode Guard** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`check_disk_capacity`)** |
+| **Direct SSH Streaming Pipeline** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`stream_mailbox_direct.sh`)** |
+| **Post-Migration Data Integrity Verifier** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`verify_migration.sh`)** |
+| **Source Maintenance Freeze Mode** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`freeze_source_accounts.sh`)** |
+| **Generic IMAP Ingestion Engine** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`imapsync_wrapper.sh`)** |
+| **Executive HTML Report Generator** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | **✅ (`generate_migration_report.sh`)** |
 
 ---
 
 ## Complete Changelog
 
+- **v1.0.6 (2026-08-27) — State Checkpoint & Resume, Parallel Concurrency, Security Shield & Enterprise Suite**
+  - **State-Aware Checkpoint & Resume Engine:** Melacak status ekspor/impor per-akun via `.z2z_checkpoint.db`, memungkinkan proses migrasi batch yang terputus dilanjutkan seketika tanpa re-export data.
+  - **Parallel Multi-Worker Support:** Menambahkan dukungan konkurensi worker paralel (`CONCURRENCY=4..16`) pada ekspor/impor mailbox.
+  - **Secure Password Handling:** Mengeliminasi parameter password terbuka di argumen CLI `ps aux` dengan mekanisme file deskriptor berizin `0600` yang dibersihkan via signal trap.
+  - **Incremental Delta Mailbox Sync (`util/sync_delta_mailbox.sh`):** Utilitas migrasi delta berbasis filter query timestamp REST API (`after:YYYY/MM/DD`).
+  - **Pre-Flight Disk Capacity Guard (`check_disk_capacity`):** Validasi ruang partisi dan inode pada target mount sebelum batch dump dimulai.
+  - **Post-Migration Data Integrity Verifier (`util/verify_migration.sh`):** Audit rekonsiliasi data mailbox dan hierarki folder pasca-migrasi.
+  - **Source Account Freeze Mode (`util/freeze_source_accounts.sh`):** Penguncian akun ke maintenance mode selama propagasi DNS.
+  - **Direct SSH Streaming Pipeline (`util/stream_mailbox_direct.sh`):** Streaming langsung getRestURL ke postRestURL via SSH tanpa staging disk lokal.
+  - **Generic IMAP Ingestion Engine (`util/imapsync_wrapper.sh`):** Wrapper migrasi multi-threaded IMAP ke Zimbra.
+  - **Executive HTML Summary Report (`util/generate_migration_report.sh`):** Generator laporan audit migrasi mandiri berbasis HTML modern.
+  - **Safe Admin Lockout Protection:** Validasi integritas record admin sebelum penghapusan di `skell/importar_ldap.sh`.
 - **v1.0.5 (2026-08-27) — Signatures, Sieve Filters, OOO, Calendar Resources, DNS Diagnostics & Hardening**
-  - **Webmail Signatures & Identities Migration:** Menambahkan `util/export_signatures.sh` dan `util/import_signatures.sh` untuk migrasi seluruh signature teks dan HTML beserta mapping persona identity.
+  - **Webmail Signatures & Identities Migration:** Menambahkan `util/export_signatures.sh` dan `util/import_signatures.sh` untuk migrasi signature teks dan HTML beserta mapping persona identity.
   - **Sieve Mail Filters Migration:** Menambahkan `util/export_sieve_filters.sh` dan `util/import_sieve_filters.sh` untuk migrasi filter Sieve multi-line secara aman.
   - **Out-of-Office Vacation Auto-Reply:** Menambahkan `util/export_ooo.sh` dan `util/import_ooo.sh` dengan validasi format tanggal `YYYYMMDDHHMMSSZ`.
   - **Calendar Resources & Equipment:** Menambahkan `util/export_calendar_resources.sh` dan `util/import_calendar_resources.sh` untuk provisioning dan ekspor arsip TGZ resource ruangan/peralatan.
@@ -264,7 +303,7 @@ markdownlint -c .trunk/configs/.markdownlint.yaml README.md DOCNOTE.md skell/REA
 Setelah proses impor mailbox selesai pada server baru, lakukan langkah-langkah verifikasi berikut:
 
 1. **Validasi Jumlah & Ukuran Mailbox:**
-   Jalankan `./util/mailbox_size.sh` pada server baru dan bandingkan hasilnya dengan laporan pra-migrasi pada server lama.
+   Jalankan `./util/verify_migration.sh` dan `./util/mailbox_size.sh` pada server baru dan bandingkan hasilnya dengan laporan pra-migrasi pada server lama.
 2. **Verifikasi Aturan Penerusan & Folder Bersama:**
    Jalankan `./util/audit_forwards.sh` dan `./util/audit_shares.sh` untuk memastikan seluruh aturan forward dan sharing pengguna aktif dengan benar.
 3. **Uji Coba Autentikasi Pengguna:**
@@ -281,64 +320,34 @@ Setelah proses impor mailbox selesai pada server baru, lakukan langkah-langkah v
 
 ---
 
-## Operational Best Practices
+## Security & Architecture Reference
 
-Panduan operasional berstandar enterprise (**RFC 2119**):
-
-- **🔴 MUST (Wajib Dilakukan):**
-  - **MUST Execute as Zimbra User:** Skrip `z2z.sh` dan `importar_ldap.sh` **WAJIB** dijalankan menggunakan akun sistem `zimbra` (`su - zimbra`).
-  - **MUST Verify FQDN Hostnames:** Pastikan hostname baru bertipe FQDN sah (`mail.domain.com`) dan terdaftar pada DNS/hosts lokal.
-
-- **🟡 SHOULD (Sangat Dianjurkan):**
-  - **SHOULD Audit Mailbox Footprint:** Sangat dianjurkan menjalankan `./util/mailbox_size.sh` sebelum migrasi guna mengkalkulasi kebutuhan kapasitas disk tujuan.
-  - **SHOULD Audit Forwarding & Shares:** Sangat dianjurkan menjalankan `./util/audit_forwards.sh` dan `./util/audit_shares.sh` guna mendeteksi loop penerusan email dan hak akses share.
-  - **SHOULD Run Extended Permission Healing:** Sangat dianjurkan menjalankan `/opt/zimbra/libexec/zmfixperms --extended` sebagai `root` pasca migrasi.
-
-- **🟢 MAY (Opsional Sesuai Kebijakan):**
-  - **MAY Use Account Filters:** Administrator dapat memfilter ekspor untuk akun aktif saja atau domain tertentu jika menjalankan migrasi bertahap.
-  - **MAY Exclude Trash and Junk:** Dapat melewati impor `script_import_TRASH.sh` dan `script_import_JUNK.sh` untuk menghemat ruang disk server baru.
-  - **MAY Run Parallel Export:** Administrator dapat membagi file `script_export_FULL.sh` ke beberapa sesi terminal (tmux/screen) untuk mempercepat proses ekspor pada server multi-core.
-
-- **⛔ AVOID (Dilarang Keras):**
-  - **AVOID Raw Rsync `/opt/zimbra`:** Jangan pernah menyalin direktori `/opt/zimbra` mentah antar server dengan versi OS atau versi Zimbra berbeda karena akan merusak database MySQL dan skema LDAP.
-  - **AVOID Destructive `resolve=reset` Mode:** Jangan mengganti parameter `resolve=skip` menjadi `resolve=reset` pada `zmmailbox postRestURL` karena akan menimpa data yang telah ada.
+Dokumentasi arsitektur internal, analisis dependensi OpenLDAP, perincian mitigasi CVE, dan panduan audit tersedia di [DOCNOTE.md](DOCNOTE.md). Riwayat seluruh versi tersedia di [CHANGELOG](CHANGELOG).
 
 ---
 
-## Strategic Migration Guide
+## Community, Support & Sponsorship
 
-Bagi organisasi yang masih mengoperasikan Zimbra versi lawas (**ZCS 8.8.x / 9.x EOL**) pada sistem operasi usang (**Ubuntu 10.04/12.04/14.04/16.04/18.04** atau **CentOS 5/6/7**), jalur migrasi terbaik adalah:
+Proyek Z2Z terbuka untuk seluruh komunitas administrator mail server dunia. Jika Anda terbantu oleh framework ini dalam migrasi mail server skala produksi, pertimbangkan untuk mendukung kelangsungan pengembangannya:
 
-1. **Deploy Server Baru Bersih:** Pasang sistem operasi modern (**Ubuntu 20.04/22.04/24.04 LTS** atau **Rocky Linux 8/9 / RHEL 9**) dengan Zimbra FOSS versi terbaru (**ZCS 10.1.20+**).
-2. **Gunakan Z2Z untuk Migrasi Terisolasi:** Ekspor seluruh data dari server lama dan impor ke server baru menggunakan Z2Z.
-3. **Penyembuhan Hak Akses & Hardening:** Terapkan sanitasi permission `zmfixperms --extended` dan pasang paket proteksi spam/malware seperti [Eradicate Zimbra Malware Suite](https://github.com/alsyundawy/eradicate-zimbra-malware).
-
----
-
-## Production Migration Case Studies
-
-- **Regional Labor Court (13th Region - Filipe A. Motta Braga):**
-  *Migrasi sukses 2.400 akun dari versi legacy Zimbra ke platform modern tanpa kehilangan data dan tanpa downtime operasional.*
-- **Plus Informática (Marco Brandão):**
-  *Migrasi lintas versi dari Zimbra 8.0.7 ke 8.7.11 berjalan mulus dan cepat.*
-- **Paranatex Têxtil LTDA (Alisson S. Conde):**
-  *Migrasi 160 akun dengan volume data lebih dari 700GB sukses tanpa kehilangan data.*
-- **Gobah! Soluções em TI (Fernando Lima):**
-  *Ekspor mailbox besar di atas 2GB yang sebelumnya memakan waktu berhari-hari berhasil diselesaikan dalam hitungan jam menggunakan Z2Z zero-timeout.*
+- **Konsultasi & Dukungan Teknis:** Hubungi [WhatsApp](https://wa.me/6285658515212) atau [Telegram @alsyundawy](https://t.me/alsyundawy)
+- **Donasi & Sponsorship:** Dukung pengembangan melalui [GitHub Sponsor](https://github.com/sponsors/alsyundawy), [PayPal](https://www.paypal.me/alsyundawy), atau [Ko-fi](https://ko-fi.com/alsyundawy)
 
 ---
 
 ## Contributing
 
-Kontribusi, laporan bug, dan ide pengembangan sangat disambut. Silakan buka *Issue* atau kirimkan *Pull Request* pada repositori GitHub resmi.
+Kontribusi dan perbaikan terbuka untuk seluruh komunitas:
+
+1. Fork repositori ini.
+2. Buat feature branch baru (`git checkout -b feature/peningkatan-keren`).
+3. Pastikan seluruh pengujian lolos: `bash -n *.sh util/*.sh` dan `shellcheck --norc *.sh util/*.sh`.
+4. Submit Pull Request dengan penjelasan rinci.
 
 ---
 
 ## License
 
-Didistribusikan di bawah lisensi **Creative Commons Attribution-NonCommercial-ShareAlike (CC BY-NC-SA 4.0)** & **GPL**.
+Copyright (C) 2016-2026 Fabio Soares Schmidt, Harry Dertin Sutisna Alsyundawy.
 
-- **Maintainer**: Harry Dertin Sutisna Alsyundawy
-- **Telegram**: [@alsyundawy](https://t.me/alsyundawy)
-- **WhatsApp**: [+62 856-5851-5212](https://wa.me/6285658515212)
-- **Original Author**: Fabio Soares Schmidt <fabio@respirandolinux.com.br> | [Respirando Linux](https://respirandolinux.com.br)
+Dilisensikan di bawah [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/) dan General Public License (GPL).

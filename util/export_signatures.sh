@@ -17,7 +17,7 @@
 #   bash util/export_signatures.sh [output_dir]
 #   Default output_dir: ./export/signatures
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 

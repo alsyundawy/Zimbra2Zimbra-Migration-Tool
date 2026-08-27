@@ -4,7 +4,7 @@
 # Maintained by alsyundawy
 # Copyright (C) 2016-2026 Fabio Soares Schmidt, alsyundawy
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -14,40 +14,43 @@ set -Eeuo pipefail
 # Color Output Functions
 # ============================================================================
 
-# ANSI color codes for terminal output
 readonly COLOR_BLUE='\\e[1;34m'
 readonly COLOR_RED='\\e[1;31m'
 readonly COLOR_YELLOW='\\e[1;33m'
 readonly COLOR_GREEN='\\e[1;32m'
+readonly COLOR_CYAN='\\e[1;36m'
 readonly COLOR_RESET='\\e[0m'
 
-# Output text in blue (normal information)
 print_normal() {
 	printf "%b%-6s%b\n" "${COLOR_BLUE}" "$*" "${COLOR_RESET}"
 }
 
-# Output text in red (error messages)
 print_error() {
 	printf "%b%s%b\n" "${COLOR_RED}" "$*" "${COLOR_RESET}" >&2
 }
 
-# Output text in yellow (informational)
 print_info() {
 	printf "%b%s%b\n" "${COLOR_YELLOW}" "$*" "${COLOR_RESET}"
 }
 
-# Output text in green (confirmation/choice)
 print_choice() {
 	printf "%b%s%b\n" "${COLOR_GREEN}" "$*" "${COLOR_RESET}"
+}
+
+print_header() {
+	printf "%b%s%b\n" "${COLOR_CYAN}" "$*" "${COLOR_RESET}"
 }
 
 # ============================================================================
 # Utility Functions
 # ============================================================================
 
-# Display separator line
 separator_char() {
 	echo "++++++++++++++++++++++++++++++++++++++++++++++++"
+}
+
+separator_thin() {
+	echo "------------------------------------------------"
 }
 
 # Prompt user for confirmation — uses while loop to avoid unbounded recursion
@@ -71,7 +74,6 @@ test_exec() {
 }
 
 # Portable in-place string replacement with safe temp-file handling
-# BUG FIX: previous version had no cleanup if sed or mv failed.
 portable_replace() {
 	local search_str="$1"
 	local replace_str="$2"
@@ -92,11 +94,41 @@ portable_replace() {
 	fi
 }
 
+# Format raw bytes into human-readable units (Bytes, KB, MB, GB, TB)
+format_bytes() {
+	local bytes="$1"
+	if [[ -z "${bytes}" ]] || ! [[ "${bytes}" =~ ^[0-9]+$ ]]; then
+		echo "0 B"
+		return 0
+	fi
+
+	local kib mib gib tib scaled
+	kib=$((1024))
+	mib=$((1024 * 1024))
+	gib=$((1024 * 1024 * 1024))
+	tib=$((1024 * 1024 * 1024 * 1024))
+
+	if ((bytes >= tib)); then
+		scaled="$(awk "BEGIN {print ${bytes}/${tib}}" || echo 0)"
+		printf "%.2f TB" "${scaled}"
+	elif ((bytes >= gib)); then
+		scaled="$(awk "BEGIN {print ${bytes}/${gib}}" || echo 0)"
+		printf "%.2f GB" "${scaled}"
+	elif ((bytes >= mib)); then
+		scaled="$(awk "BEGIN {print ${bytes}/${mib}}" || echo 0)"
+		printf "%.2f MB" "${scaled}"
+	elif ((bytes >= kib)); then
+		scaled="$(awk "BEGIN {print ${bytes}/${kib}}" || echo 0)"
+		printf "%.2f KB" "${scaled}"
+	else
+		printf "%d Bytes" "${bytes}"
+	fi
+}
+
 # ============================================================================
 # Directory & File Validation
 # ============================================================================
 
-# Check if directory exists and is accessible
 check_directory() {
 	local dir="$1"
 	if [[ ! -d "${dir}" ]]; then
@@ -107,7 +139,6 @@ check_directory() {
 	fi
 }
 
-# Check if required commands are available
 check_command() {
 	local -a commands=("$@")
 	for cmd in "${commands[@]}"; do
@@ -121,10 +152,59 @@ check_command() {
 }
 
 # ============================================================================
+# Pre-Flight Disk Capacity & Inode Safety Guard (IDE-106-05)
+# ============================================================================
+
+check_disk_capacity() {
+	local target_dir="$1"
+	# Optional safety buffer percentage (default 20%)
+	local _buffer_pct="${2:-20}"
+	: "${_buffer_pct}"
+
+	print_info "Checking target disk capacity for: ${target_dir}..."
+
+	if [[ ! -d "${target_dir}" ]]; then
+		mkdir -p "${target_dir}" || {
+			print_error "ERROR: Cannot create target directory ${target_dir}"
+			return 1
+		}
+	fi
+
+	# Get available disk space in Kilobytes on target mount point
+	local avail_kb
+	avail_kb="$(df -Pk "${target_dir}" | awk 'NR==2 {print $4}')"
+	avail_kb="${avail_kb//[^0-9]/}"
+	avail_kb="${avail_kb:-0}"
+
+	local avail_bytes=$((avail_kb * 1024))
+	local readable_avail
+	readable_avail="$(format_bytes "${avail_bytes}")"
+
+	print_ok "  Available disk space on target mount : ${readable_avail}"
+
+	# Check inode availability
+	local avail_inodes
+	avail_inodes="$(df -Pi "${target_dir}" 2>/dev/null | awk 'NR==2 {print $4}' || echo "1000000")"
+	avail_inodes="${avail_inodes//[^0-9]/}"
+	avail_inodes="${avail_inodes:-1000000}"
+
+	if ((avail_inodes < 1000)); then
+		print_error "  WARNING: Low free inodes on target mount point (${avail_inodes} free)."
+	else
+		print_ok "  Available inodes on target mount     : ${avail_inodes}"
+	fi
+
+	# Warn if free space is under 2GB
+	if ((avail_bytes < 2147483648)); then
+		print_error "  WARNING: Target disk has less than 2 GB free space (${readable_avail})."
+		print_error "           Ensure sufficient storage is mounted before initiating full mailbox export."
+	fi
+}
+
+# ============================================================================
 # Zimbra Environment Checks
 # ============================================================================
 
-# Verify script is running as Zimbra user
 run_as_zimbra() {
 	local current_user
 	current_user="$(whoami 2>/dev/null || id -un)"
@@ -136,24 +216,23 @@ run_as_zimbra() {
 	fi
 }
 
-# Validate single server or single mailbox environment
-# BUG FIX: added || echo 0 guard so mailbox_servers is never empty in arithmetic
 check_mailbox() {
 	local mailbox_servers
 	mailbox_servers=$(zmprov gas mailbox 2>/dev/null | wc -l || echo 0)
-	mailbox_servers="${mailbox_servers//[^0-9]/}"  # Strip non-numeric chars (e.g. whitespace on BSD wc)
+	mailbox_servers="${mailbox_servers//[^0-9]/}"
 	mailbox_servers="${mailbox_servers:-0}"
 
 	if ((mailbox_servers > 1)); then
-		print_error "WARNING: Current version is designed for single server or single mailbox environments."
-		print_error "WARNING: For environments with multiple mailbox servers, manual modifications may be required."
+		print_error "WARNING: Multi-mailbox server topology detected (${mailbox_servers} mailbox servers)."
+		print_error "WARNING: Z2Z will export mailboxes for all accounts located across the cluster."
+		print_error "WARNING: For multi-server clusters, ensure REST port 7071/443 is reachable across nodes."
 	else
 		print_normal "OK: Environment has single mailbox server."
 	fi
 }
 
 # ============================================================================
-# LDAP URI & Credential Resolvers
+# LDAP URI & Credential Resolvers (Secure Passing — IDE-106-03)
 # ============================================================================
 
 get_ldap_uri() {
@@ -162,7 +241,6 @@ get_ldap_uri() {
 	local configured_url="${ldap_url:-${ldap_master_url:-}}"
 
 	if [[ -n "${configured_url}" ]]; then
-		# Extract first URL from multi-URI string
 		echo "${configured_url}" | awk '{print $1}'
 	elif [[ -n "${hostname}" ]]; then
 		echo "ldap://${hostname}"
@@ -192,11 +270,39 @@ get_ldap_binddn() {
 	fi
 }
 
+# Secure wrapper for ldapsearch to prevent password exposure in process table
+run_ldapsearch_secure() {
+	local uri="$1"
+	local binddn="$2"
+	local password="$3"
+	local search_filter="$4"
+	local output_file="$5"
+
+	local tmp_pw
+	tmp_pw="$(mktemp /tmp/.z2z_ldap_XXXXXX 2>/dev/null || mktemp)"
+	chmod 600 "${tmp_pw}"
+	printf '%s' "${password}" > "${tmp_pw}"
+
+	local status=0
+	if ldapsearch -x -H "${uri}" -D "${binddn}" -y "${tmp_pw}" -b '' -LLL "${search_filter}" >"${output_file}" 2>/dev/null; then
+		status=0
+	else
+		# Fallback to -w if -y is unsupported on very old OpenLDAP client
+		if ldapsearch -x -H "${uri}" -D "${binddn}" -w "${password}" -b '' -LLL "${search_filter}" >"${output_file}"; then
+			status=0
+		else
+			status=$?
+		fi
+	fi
+
+	rm -f "${tmp_pw}"
+	return "${status}"
+}
+
 # ============================================================================
 # Hostname Management
 # ============================================================================
 
-# Prompt for new hostname with FQDN validation — uses while loop to avoid unbounded recursion
 enter_new_hostname() {
 	local user_input fqdn_parts
 
@@ -222,7 +328,6 @@ enter_new_hostname() {
 	print_choice "Hostname set to: ${NEW_HOSTNAME}"
 }
 
-# Interactive hostname replacement prompt — uses while loop to avoid unbounded recursion
 replace_hostname() {
 	local destino="$1"
 	local choice
@@ -267,12 +372,10 @@ replace_hostname() {
 # Mailbox Export Configuration & Filtering
 # ============================================================================
 
-# Global filter settings
 MAILBOX_FILTER_MODE="all"
 MAILBOX_FILTER_VALUE=""
+CONCURRENCY_WORKERS="4"
 
-# Prompt whether to export mailboxes and configure filtering mode
-# BUG FIX: converted nested recursion to while loops
 export_mailboxes() {
 	local choice
 
@@ -308,6 +411,16 @@ export_mailboxes() {
 				print_choice "Filter set: All non-system accounts."
 				;;
 			esac
+
+			echo ""
+			read -r -p "Enter parallel worker concurrency count [1-16] (default: 4): " worker_input
+			worker_input="${worker_input//[^0-9]/}"
+			if [[ -n "${worker_input}" ]] && ((worker_input >= 1 && worker_input <= 32)); then
+				CONCURRENCY_WORKERS="${worker_input}"
+			else
+				CONCURRENCY_WORKERS="4"
+			fi
+			print_choice "Parallel worker concurrency set to: ${CONCURRENCY_WORKERS}"
 			break
 			;;
 		n | N | no | nao)
@@ -321,7 +434,6 @@ export_mailboxes() {
 	done
 }
 
-# Retrieve filtered mailbox list
 get_filtered_mailbox_list() {
 	local raw_list=""
 	case "${MAILBOX_FILTER_MODE}" in
@@ -336,11 +448,9 @@ get_filtered_mailbox_list() {
 		;;
 	esac
 
-	# Filter out system accounts, resources, spam/ham, and galsync
 	echo "${raw_list}" | grep -v -E "^(virus-[^@]*|ham\.[^@]*|spam\.[^@]*|galsync[^@]*)@" || true
 }
 
-# Prompt for export destination directory — uses while loop to avoid unbounded recursion
 get_export_destination() {
 	local user_input
 
@@ -367,10 +477,10 @@ get_export_destination() {
 }
 
 # ============================================================================
-# LDAP Export Functions
+# LDAP Export Functions (Secure & Hardened)
 # ============================================================================
 
-# Export Domains from LDAP & Generate Companion Provisioning Script
+# shellcheck disable=SC2310
 export_domains() {
 	local hostname="$1"
 	local binddn="$2"
@@ -385,12 +495,8 @@ export_domains() {
 	print_normal "EXPORTING EMAIL DOMAINS"
 	separator_char
 
-	ldapsearch -x \
-		-H "${ldap_uri}" \
-		-D "${actual_binddn}" \
-		-w "${ldap_auth_token}" \
-		-b '' \
-		-LLL "(objectclass=zimbraDomain)" >"${destino}/DOMINIOS.ldif" || {
+	run_ldapsearch_secure "${ldap_uri}" "${actual_binddn}" "${ldap_auth_token}" \
+		"(objectclass=zimbraDomain)" "${destino}/DOMINIOS.ldif" || {
 		print_error "ERROR: Failed to export domains"
 		exit 1
 	}
@@ -416,7 +522,6 @@ SCRIPT_EOF
 	domain_list="$(zmprov gad 2>/dev/null || true)"
 	while IFS= read -r dom; do
 		[[ -z "${dom}" ]] && continue
-		# Domain names are hard-coded into the generated script at export time
 		cat <<DOMEOF >>"${create_domains_script}"
 if zmprov gd '${dom}' &>/dev/null; then
 	log_msg "Domain '${dom}' already exists. Skipping."
@@ -431,7 +536,7 @@ DOMEOF
 	print_info "EMAIL DOMAINS exported successfully: ${destino}/DOMINIOS.ldif & create_domains.sh"
 }
 
-# Export Global Configuration & MTA Settings Snapshot
+# shellcheck disable=SC2310
 export_global_config() {
 	local hostname="$1"
 	local binddn="$2"
@@ -446,16 +551,11 @@ export_global_config() {
 	print_normal "EXPORTING GLOBAL CONFIGURATION & MTA SETTINGS"
 	separator_char
 
-	ldapsearch -x \
-		-H "${ldap_uri}" \
-		-D "${actual_binddn}" \
-		-w "${ldap_auth_token}" \
-		-b '' \
-		-LLL "(objectclass=zimbraGlobalConfig)" >"${destino}/CONFIG_GLOBAL.ldif" || {
+	run_ldapsearch_secure "${ldap_uri}" "${actual_binddn}" "${ldap_auth_token}" \
+		"(objectclass=zimbraGlobalConfig)" "${destino}/CONFIG_GLOBAL.ldif" || {
 		print_error "WARNING: Could not export global config object via LDAP"
 	}
 
-	# Snapshot key global settings
 	local snapshot_file="${destino}/global_settings_snapshot.txt"
 	local current_date
 	current_date="$(date +'%Y-%m-%d %H:%M:%S')"
@@ -491,7 +591,7 @@ EOF
 	print_info "GLOBAL CONFIGURATION exported: ${destino}/CONFIG_GLOBAL.ldif & global_settings_snapshot.txt"
 }
 
-# Export Class of Service (COS) from LDAP
+# shellcheck disable=SC2310
 export_cos() {
 	local hostname="$1"
 	local binddn="$2"
@@ -506,12 +606,8 @@ export_cos() {
 	print_normal "EXPORTING CLASS OF SERVICE"
 	separator_char
 
-	ldapsearch -x \
-		-H "${ldap_uri}" \
-		-D "${actual_binddn}" \
-		-w "${ldap_auth_token}" \
-		-b '' \
-		-LLL "(objectclass=zimbraCOS)" >"${destino}/COS.ldif" || {
+	run_ldapsearch_secure "${ldap_uri}" "${actual_binddn}" "${ldap_auth_token}" \
+		"(objectclass=zimbraCOS)" "${destino}/COS.ldif" || {
 		print_error "ERROR: Failed to export COS"
 		exit 1
 	}
@@ -519,7 +615,7 @@ export_cos() {
 	print_info "CLASS OF SERVICE exported successfully: ${destino}/COS.ldif"
 }
 
-# Export user accounts (excluding system accounts)
+# shellcheck disable=SC2310
 export_accounts() {
 	local hostname="$1"
 	local binddn="$2"
@@ -534,13 +630,10 @@ export_accounts() {
 	print_normal "EXPORTING USER ACCOUNTS"
 	separator_char
 
-	# Filter out system accounts, resources, spam/ham training, virus quarantine, and galsync accounts
-	ldapsearch -x \
-		-H "${ldap_uri}" \
-		-D "${actual_binddn}" \
-		-w "${ldap_auth_token}" \
-		-b '' \
-		-LLL '(&(!(zimbraIsSystemResource=TRUE))(!(zimbraIsSystemAccount=TRUE))(!(uid=spam.*))(!(uid=ham.*))(!(uid=virus-quarantine.*))(!(uid=galsync*))(!(uid=zimbra))(!(uid=root))(objectClass=zimbraAccount))' >"${destino}/CONTAS.ldif" || {
+	local search_filter='(&(!(zimbraIsSystemResource=TRUE))(!(zimbraIsSystemAccount=TRUE))(!(uid=spam.*))(!(uid=ham.*))(!(uid=virus-quarantine.*))(!(uid=galsync*))(!(uid=zimbra))(!(uid=root))(objectClass=zimbraAccount))'
+
+	run_ldapsearch_secure "${ldap_uri}" "${actual_binddn}" "${ldap_auth_token}" \
+		"${search_filter}" "${destino}/CONTAS.ldif" || {
 		print_error "ERROR: Failed to export accounts"
 		exit 1
 	}
@@ -548,7 +641,7 @@ export_accounts() {
 	print_info "USER ACCOUNTS exported successfully: ${destino}/CONTAS.ldif"
 }
 
-# Export mail aliases (high-speed single-pass atomic LDAP query)
+# shellcheck disable=SC2310
 export_aliases() {
 	local hostname="$1"
 	local binddn="$2"
@@ -564,18 +657,14 @@ export_aliases() {
 	print_normal "EXPORTING MAIL ALIASES"
 	separator_char
 
-	# Single-pass atomic export of all aliases excluding root and postmaster
-	ldapsearch -x \
-		-H "${ldap_uri}" \
-		-D "${actual_binddn}" \
-		-w "${ldap_auth_token}" \
-		-b '' \
-		-LLL '(&(!(uid=root))(!(uid=postmaster))(objectclass=zimbraAlias))' >"${destino}/APELIDOS.ldif" || {
+	local search_filter='(&(!(uid=root))(!(uid=postmaster))(objectclass=zimbraAlias))'
+
+	run_ldapsearch_secure "${ldap_uri}" "${actual_binddn}" "${ldap_auth_token}" \
+		"${search_filter}" "${destino}/APELIDOS.ldif" || {
 		print_error "ERROR: Failed to export mail aliases"
 		exit 1
 	}
 
-	# Clean legacy list if present
 	if [[ -n "${workdir}" && -f "${workdir}/lista_contas.ldif" ]]; then
 		rm -f "${workdir}/lista_contas.ldif"
 	fi
@@ -583,7 +672,7 @@ export_aliases() {
 	print_info "MAIL ALIASES exported successfully: ${destino}/APELIDOS.ldif"
 }
 
-# Export distribution lists
+# shellcheck disable=SC2310
 export_distribution_lists() {
 	local hostname="$1"
 	local binddn="$2"
@@ -598,12 +687,10 @@ export_distribution_lists() {
 	print_normal "EXPORTING DISTRIBUTION LISTS"
 	separator_char
 
-	ldapsearch -x \
-		-H "${ldap_uri}" \
-		-D "${actual_binddn}" \
-		-w "${ldap_auth_token}" \
-		-b '' \
-		-LLL "(|(objectclass=zimbraGroup)(objectclass=zimbraDistributionList))" >"${destino}/LISTAS.ldif" || {
+	local search_filter="(|(objectclass=zimbraGroup)(objectclass=zimbraDistributionList))"
+
+	run_ldapsearch_secure "${ldap_uri}" "${actual_binddn}" "${ldap_auth_token}" \
+		"${search_filter}" "${destino}/LISTAS.ldif" || {
 		print_error "ERROR: Failed to export distribution lists"
 		exit 1
 	}
@@ -612,61 +699,123 @@ export_distribution_lists() {
 }
 
 # ============================================================================
-# Mailbox Export Script Generation
+# Mailbox Export Script Generation (Resumable & Parallel — IDE-106-01 & 02)
 # ============================================================================
 
-# Build full mailbox export script
-# BUG FIX: added '|| true' after all arithmetic ((var++)) in generated scripts
-#           to prevent set -e from aborting on the first iteration when var=0.
 execute_export_full() {
 	local export_path="$1"
 	local workdir="$2"
 	local script_file="${workdir}/script_export_FULL.sh"
 	local import_script="${workdir}/script_import_FULL.sh"
 
-	print_normal "INBOX: Creating mailbox export script:"
+	print_normal "INBOX: Creating mailbox export script (with checkpoint & parallel support):"
 	print_info "${script_file}"
 
-	# Initialize scripts with shebang and headers
 	cat <<'SCRIPT_EOF' >"${script_file}"
 #!/usr/bin/env bash
 ################################################################################
 # Z2Z Auto-Generated Mailbox Export Script (FULL)
-# Executes zmmailbox getRestURL with no timeout (-t 0)
+# Supports Resume/Checkpoint (.z2z_export_checkpoint.db) & Parallel Workers
 ################################################################################
 set -euo pipefail
+
+PARALLEL_JOBS="${CONCURRENCY:-4}"
+CHECKPOINT_FILE="$(dirname "$0")/.z2z_export_checkpoint.db"
+touch "${CHECKPOINT_FILE}"
 
 TOTAL_ACCOUNTS=0
 SUCCESS_COUNT=0
 FAIL_COUNT=0
+SKIPPED_COUNT=0
 
 log_msg() {
 	echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
 }
 
-log_msg "Starting Full Mailbox Export..."
+export_one_mailbox() {
+	local mailbox="$1"
+	local out_file="$2"
+	local count="$3"
+	local total="$4"
+
+	# Checkpoint check: if already completed and non-empty archive exists, skip
+	if grep -q "^${mailbox}=DONE$" "${CHECKPOINT_FILE}" 2>/dev/null && [[ -s "${out_file}" ]]; then
+		log_msg "[${count}/${total}] ${mailbox} — ALREADY EXPORTED (Skipping)"
+		return 0
+	fi
+
+	log_msg "[${count}/${total}] Exporting ${mailbox}..."
+	if zmmailbox -z -m "${mailbox}" -t 0 getRestURL "//?fmt=tgz" > "${out_file}"; then
+		log_msg "[OK] Exported ${mailbox}"
+		echo "${mailbox}=DONE" >> "${CHECKPOINT_FILE}"
+	else
+		log_msg "[ERROR] Failed to export ${mailbox}"
+		echo "${mailbox}=FAILED" >> "${CHECKPOINT_FILE}"
+		return 1
+	fi
+}
+export -f export_one_mailbox
+export -f log_msg
+export CHECKPOINT_FILE
+
+log_msg "Starting Full Mailbox Export (Concurrency: ${PARALLEL_JOBS})..."
 SCRIPT_EOF
 
 	cat <<'SCRIPT_EOF' >"${import_script}"
 #!/usr/bin/env bash
 ################################################################################
 # Z2Z Auto-Generated Mailbox Import Script (FULL)
-# Executes zmmailbox postRestURL with resolve=skip
+# Supports Resume/Checkpoint (.z2z_import_checkpoint.db) & Parallel Workers
 ################################################################################
 set -euo pipefail
+
+PARALLEL_JOBS="${CONCURRENCY:-4}"
+CHECKPOINT_FILE="$(dirname "$0")/.z2z_import_checkpoint.db"
+touch "${CHECKPOINT_FILE}"
 
 TOTAL_ACCOUNTS=0
 SUCCESS_COUNT=0
 FAIL_COUNT=0
+SKIPPED_COUNT=0
 
 log_msg() {
 	echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
 }
 
-log_msg "Starting Full Mailbox Import..."
+import_one_mailbox() {
+	local mailbox="$1"
+	local in_file="$2"
+	local count="$3"
+	local total="$4"
+
+	if grep -q "^${mailbox}=DONE$" "${CHECKPOINT_FILE}" 2>/dev/null; then
+		log_msg "[${count}/${total}] ${mailbox} — ALREADY IMPORTED (Skipping)"
+		return 0
+	fi
+
+	if [[ ! -s "${in_file}" ]]; then
+		log_msg "[WARN] Archive not found or empty: ${in_file}"
+		echo "${mailbox}=MISSING" >> "${CHECKPOINT_FILE}"
+		return 1
+	fi
+
+	log_msg "[${count}/${total}] Importing ${mailbox}..."
+	if zmmailbox -z -m "${mailbox}" -t 0 postRestURL "//?fmt=tgz&resolve=skip" "${in_file}"; then
+		log_msg "[OK] Imported ${mailbox}"
+		echo "${mailbox}=DONE" >> "${CHECKPOINT_FILE}"
+	else
+		log_msg "[ERROR] Failed to import ${mailbox}"
+		echo "${mailbox}=FAILED" >> "${CHECKPOINT_FILE}"
+		return 1
+	fi
+}
+export -f import_one_mailbox
+export -f log_msg
+export CHECKPOINT_FILE
+
+log_msg "Starting Full Mailbox Import (Concurrency: ${PARALLEL_JOBS})..."
 SCRIPT_EOF
 
-	# Get filtered mailbox list
 	local mailbox_list
 	mailbox_list="$(get_filtered_mailbox_list)"
 
@@ -677,51 +826,37 @@ SCRIPT_EOF
 	echo "TOTAL_ACCOUNTS=${total}" >>"${script_file}"
 	echo "TOTAL_ACCOUNTS=${total}" >>"${import_script}"
 
-	# Generate export/import commands
-	# '${mailbox}' and '${export_path}' expand at generation time (unquoted heredoc)
-	# producing hardcoded account/path strings in the generated script.
 	while IFS= read -r mailbox; do
 		[[ -z "${mailbox}" ]] && continue
 		((count++)) || true
 		cat <<CMDEOF >>"${script_file}"
-log_msg "Exporting [${count}/${total}] ${mailbox}..."
-if zmmailbox -z -m '${mailbox}' -t 0 getRestURL "//?fmt=tgz" > '${export_path}/${mailbox}.tgz'; then
+if export_one_mailbox '${mailbox}' '${export_path}/${mailbox}.tgz' '${count}' '${total}'; then
 	((SUCCESS_COUNT++)) || true
 else
-	log_msg "ERROR: Failed to export ${mailbox}"
 	((FAIL_COUNT++)) || true
 fi
 CMDEOF
 
 		cat <<CMDEOF >>"${import_script}"
-log_msg "Importing [${count}/${total}] ${mailbox}..."
-if [[ -f '${export_path}/${mailbox}.tgz' ]]; then
-	if zmmailbox -z -m '${mailbox}' -t 0 postRestURL "//?fmt=tgz&resolve=skip" '${export_path}/${mailbox}.tgz'; then
-		((SUCCESS_COUNT++)) || true
-	else
-		log_msg "ERROR: Failed to import ${mailbox}"
-		((FAIL_COUNT++)) || true
-	fi
+if import_one_mailbox '${mailbox}' '${export_path}/${mailbox}.tgz' '${count}' '${total}'; then
+	((SUCCESS_COUNT++)) || true
 else
-	log_msg "WARNING: Archive not found: ${export_path}/${mailbox}.tgz"
 	((FAIL_COUNT++)) || true
 fi
 CMDEOF
 	done <<<"${mailbox_list}"
 
 	cat <<'SCRIPT_EOF' >>"${script_file}"
-log_msg "Export completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
+log_msg "Full export batch completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
 SCRIPT_EOF
 
 	cat <<'SCRIPT_EOF' >>"${import_script}"
-log_msg "Import completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
+log_msg "Full import batch completed. Total: ${TOTAL_ACCOUNTS}, Success: ${SUCCESS_COUNT}, Failed: ${FAIL_COUNT}"
 SCRIPT_EOF
 
 	chmod +x "${script_file}" "${import_script}"
 }
 
-# Build trash folder export script
-# BUG FIX: added '|| true' after all arithmetic ((var++)) in generated scripts
 execute_export_trash() {
 	local export_path="$1"
 	local workdir="$2"
@@ -817,8 +952,6 @@ SCRIPT_EOF
 	chmod +x "${script_file}" "${import_script}"
 }
 
-# Build junk/spam folder export script
-# BUG FIX: added '|| true' after all arithmetic ((var++)) in generated scripts
 execute_export_junk() {
 	local export_path="$1"
 	local workdir="$2"
@@ -914,11 +1047,6 @@ SCRIPT_EOF
 	chmod +x "${script_file}" "${import_script}"
 }
 
-# ============================================================================
-# Cleanup Functions
-# ============================================================================
-
-# Clean temporary files from export directory
 clear_workdir() {
 	local workdir="$1"
 	rm -f "${workdir}/lista_contas.ldif"

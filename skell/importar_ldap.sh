@@ -5,7 +5,7 @@
 # Copyright (C) 2016-2026 Fabio Soares Schmidt, alsyundawy
 # For more information, please read README.md and INSTALL
 #
-# Version: 1.0.5
+# Version: 1.0.6
 # License: CC BY-NC-SA / GPL
 ################################################################################
 
@@ -15,11 +15,11 @@ set -Eeuo pipefail
 # Color Output Functions
 # ============================================================================
 
-readonly COLOR_BLUE='\e[1;34m'
-readonly COLOR_RED='\e[1;31m'
-readonly COLOR_YELLOW='\e[1;33m'
-readonly COLOR_GREEN='\e[1;32m'
-readonly COLOR_RESET='\e[0m'
+readonly COLOR_BLUE='\\e[1;34m'
+readonly COLOR_RED='\\e[1;31m'
+readonly COLOR_YELLOW='\\e[1;33m'
+readonly COLOR_GREEN='\\e[1;32m'
+readonly COLOR_RESET='\\e[0m'
 
 print_normal() {
 	printf "%b%-6s%b\n" "${COLOR_BLUE}" "$*" "${COLOR_RESET}"
@@ -102,6 +102,16 @@ else
 fi
 readonly LDAP_URI
 
+# Secure temporary credential file for LDAP operations (IDE-106-03)
+TMP_LDAP_PW="$(mktemp /tmp/.z2z_import_pw_XXXXXX 2>/dev/null || mktemp)"
+chmod 600 "${TMP_LDAP_PW}"
+printf '%s' "${ZIMBRA_PASSWORD}" > "${TMP_LDAP_PW}"
+
+_cleanup_ldap_import() {
+	[[ -n "${TMP_LDAP_PW:-}" ]] && rm -f "${TMP_LDAP_PW}" 2>/dev/null || true
+}
+trap _cleanup_ldap_import EXIT
+
 # DN constants
 readonly DEFAULT_COS_DN="cn=default,cn=cos,cn=zimbra"
 readonly DEFAULT_EXTERNAL_COS_DN="cn=defaultExternal,cn=cos,cn=zimbra"
@@ -117,7 +127,6 @@ readonly SESSION_LOG="session-${SESSION_TIMESTAMP}.log"
 
 echo "Verifying required files..."
 
-# Check for required import files
 declare -a REQUIRED_FILES=('CONTAS.ldif' 'COS.ldif' 'APELIDOS.ldif' 'LISTAS.ldif')
 
 for file in "${REQUIRED_FILES[@]}"; do
@@ -182,7 +191,6 @@ echo ""
 # Interactive Prompts
 # ============================================================================
 
-# Prompt for import confirmation — uses while loop to avoid unbounded recursion
 test_exec() {
 	local choice
 	while true; do
@@ -203,21 +211,28 @@ test_exec() {
 	done
 }
 
-# Prompt for admin user import — uses while loop to avoid unbounded recursion
+# Safe Admin Import Verification Guard (IDE-106-09)
 test_import_admin() {
 	local choice
 	while true; do
 		read -r -p "Import ADMIN user? (yes/no) " choice
 		case "${choice}" in
 		y | Y | yes | s | S | sim)
-			print_normal "Removing existing ADMIN user..."
+			# Verify that CONTAS.ldif actually contains an admin account replacement
+			if ! grep -q -E '^(uid: admin|zimbraIsAdminAccount: TRUE)' CONTAS.ldif 2>/dev/null; then
+				print_error "WARNING: No admin account found in CONTAS.ldif!"
+				print_error "         Skipping admin deletion to prevent target server lockout."
+				print_choice "Existing target admin user will be preserved."
+				return 0
+			fi
 
-			# Get current admin DN safely
+			print_normal "Removing existing ADMIN user for replacement..."
+
 			local admin_dn
 			admin_dn=$(ldapsearch -x \
 				-H "${LDAP_URI}" \
 				-D "${ZIMBRA_BINDDN}" \
-				-w "${ZIMBRA_PASSWORD}" \
+				-y "${TMP_LDAP_PW}" \
 				-b '' \
 				-LLL "uid=admin" dn 2>/dev/null | sed -n 's/^dn: //p' | head -n 1 || echo "")
 
@@ -225,7 +240,7 @@ test_import_admin() {
 				ldapdelete -r -x \
 					-H "${LDAP_URI}" \
 					-D "${ZIMBRA_BINDDN}" \
-					-w "${ZIMBRA_PASSWORD}" \
+					-y "${TMP_LDAP_PW}" \
 					"${admin_dn}" &>>"${SESSION_LOG}" || {
 					print_error "WARNING: Failed to delete existing admin user"
 				}
@@ -243,13 +258,12 @@ test_import_admin() {
 	done
 }
 
-# Run confirmation prompts
 test_exec
 echo ""
 test_import_admin
 
 # ============================================================================
-# LDAP Import Operations
+# LDAP Import Operations (Secure & Hardened)
 # ============================================================================
 
 echo ""
@@ -259,7 +273,7 @@ if [[ -f "DOMINIOS.ldif" ]]; then
 	if ldapadd -c -x \
 		-H "${LDAP_URI}" \
 		-D "${ZIMBRA_BINDDN}" \
-		-w "${ZIMBRA_PASSWORD}" \
+		-y "${TMP_LDAP_PW}" \
 		-f DOMINIOS.ldif &>>"${SESSION_LOG}"; then
 		print_choice "Domain import completed."
 	else
@@ -276,7 +290,7 @@ print_info "Removing default Zimbra COS entries..."
 ldapdelete -r -x \
 	-H "${LDAP_URI}" \
 	-D "${ZIMBRA_BINDDN}" \
-	-w "${ZIMBRA_PASSWORD}" \
+	-y "${TMP_LDAP_PW}" \
 	"${DEFAULT_COS_DN}" &>>"${SESSION_LOG}" || {
 	print_error "WARNING: Could not delete default COS (may not exist)"
 }
@@ -284,7 +298,7 @@ ldapdelete -r -x \
 ldapdelete -r -x \
 	-H "${LDAP_URI}" \
 	-D "${ZIMBRA_BINDDN}" \
-	-w "${ZIMBRA_PASSWORD}" \
+	-y "${TMP_LDAP_PW}" \
 	"${DEFAULT_EXTERNAL_COS_DN}" &>>"${SESSION_LOG}" || {
 	print_error "WARNING: Could not delete external COS (may not exist)"
 }
@@ -296,7 +310,7 @@ print_info "Importing classes of service..."
 if ldapadd -c -x \
 	-H "${LDAP_URI}" \
 	-D "${ZIMBRA_BINDDN}" \
-	-w "${ZIMBRA_PASSWORD}" \
+	-y "${TMP_LDAP_PW}" \
 	-f COS.ldif &>>"${SESSION_LOG}"; then
 	print_choice "COS import completed."
 else
@@ -310,7 +324,7 @@ print_info "Importing user accounts..."
 if ldapadd -c -x \
 	-H "${LDAP_URI}" \
 	-D "${ZIMBRA_BINDDN}" \
-	-w "${ZIMBRA_PASSWORD}" \
+	-y "${TMP_LDAP_PW}" \
 	-f CONTAS.ldif &>>"${SESSION_LOG}"; then
 	print_choice "Account import completed."
 else
@@ -324,7 +338,7 @@ print_info "Importing mail aliases..."
 if ldapadd -c -x \
 	-H "${LDAP_URI}" \
 	-D "${ZIMBRA_BINDDN}" \
-	-w "${ZIMBRA_PASSWORD}" \
+	-y "${TMP_LDAP_PW}" \
 	-f APELIDOS.ldif &>>"${SESSION_LOG}"; then
 	print_choice "Alias import completed."
 else
@@ -338,7 +352,7 @@ print_info "Importing distribution lists..."
 if ldapadd -c -x \
 	-H "${LDAP_URI}" \
 	-D "${ZIMBRA_BINDDN}" \
-	-w "${ZIMBRA_PASSWORD}" \
+	-y "${TMP_LDAP_PW}" \
 	-f LISTAS.ldif &>>"${SESSION_LOG}"; then
 	print_choice "Distribution list import completed."
 else
