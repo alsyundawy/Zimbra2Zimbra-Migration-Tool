@@ -1,16 +1,28 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ################################################################################
 # Add Disclaimer Utility
-# Adds disclaimers to all Zimbra domains
+# Adds domain disclaimers to all Zimbra domains
 # Maintained by alsyundawy
 # Note: From version 8.5 onwards, disclaimers are per-domain (not universal)
+#
+# Version: 1.0.4
+# License: CC BY-NC-SA / GPL
 ################################################################################
 
-set -euo pipefail
+set -Eeuo pipefail
 
-# Check if running as root or with appropriate privileges
-if [[ ${EUID} -ne 0 ]] && ! sudo -n true 2>/dev/null; then
-	echo "ERROR: This script requires root privileges or sudo access" >&2
+# Ensure all Zimbra binaries across ZCS 7.x-10.1 and multi-distro are in PATH
+for p in /opt/zimbra/bin /opt/zimbra/common/bin /opt/zimbra/common/sbin /opt/zimbra/openldap/bin /opt/zimbra/postfix/sbin /opt/zimbra/mysql/bin; do
+	if [[ -d "${p}" ]] && [[ ":${PATH}:" != *":${p}:"* ]]; then
+		PATH="${p}:${PATH}"
+	fi
+done
+export PATH
+
+# Check user privileges (zimbra or root)
+current_user="$(whoami 2>/dev/null || id -un)"
+if [[ "${current_user}" != "zimbra" && "${EUID}" -ne 0 ]] && ! sudo -n true 2>/dev/null; then
+	echo "ERROR: This script requires zimbra or root privileges." >&2
 	exit 1
 fi
 
@@ -19,7 +31,7 @@ readonly DISCLAIMER_TEXT="/opt/zimbra/postfix/conf/disclaimer.txt"
 readonly DISCLAIMER_HTML="/opt/zimbra/postfix/conf/disclaimer.html"
 
 # Validate disclaimer files exist
-if [[ ! -f ${DISCLAIMER_TEXT} ]] || [[ ! -f ${DISCLAIMER_HTML} ]]; then
+if [[ ! -f "${DISCLAIMER_TEXT}" ]] || [[ ! -f "${DISCLAIMER_HTML}" ]]; then
 	echo "ERROR: Disclaimer files not found at:" >&2
 	echo "  - ${DISCLAIMER_TEXT}" >&2
 	echo "  - ${DISCLAIMER_HTML}" >&2
@@ -33,47 +45,54 @@ add_disclaimers() {
 	local html_content
 
 	# Read disclaimer contents
-	text_content=$(cat "${DISCLAIMER_TEXT}") || {
+	text_content="$(cat "${DISCLAIMER_TEXT}")" || {
 		echo "ERROR: Cannot read disclaimer text file" >&2
 		return 1
 	}
 
-	html_content=$(cat "${DISCLAIMER_HTML}") || {
+	html_content="$(cat "${DISCLAIMER_HTML}")" || {
 		echo "ERROR: Cannot read disclaimer HTML file" >&2
 		return 1
 	}
 
-	# Get all domains and add disclaimers
+	# Get all domains
 	local domains
-	domains=$(zmprov gad 2>/dev/null || true)
+	domains="$(zmprov gad 2>/dev/null || true)"
+
+	local domain_count=0
+	local success_count=0
 
 	while IFS= read -r domain; do
-		if [[ -z ${domain} ]]; then
+		if [[ -z "${domain}" ]]; then
 			continue
 		fi
 
-		echo "Adding disclaimer to domain: ${domain}"
+		((domain_count++))
+		echo "Adding disclaimer to domain [${domain_count}]: ${domain}"
 
-		# Add text disclaimer
-		zmprov md "${domain}" \
-			zimbraAmavisDomainDisclaimerText "${text_content}" || {
-			echo "WARNING: Failed to add text disclaimer to ${domain}" >&2
-		}
-
-		# Add HTML disclaimer
-		zmprov md "${domain}" \
-			zimbraAmavisDomainDisclaimerHTML "${html_content}" || {
-			echo "WARNING: Failed to add HTML disclaimer to ${domain}" >&2
-		}
+		# Enable domain disclaimer signature and attach text & HTML
+		if zmprov md "${domain}" \
+			zimbraDomainMandatoryMailSignatureEnabled TRUE \
+			zimbraAmavisDomainDisclaimerText "${text_content}" \
+			zimbraAmavisDomainDisclaimerHTML "${html_content}" 2>/dev/null; then
+			((success_count++))
+		else
+			echo "WARNING: Failed to add disclaimer to ${domain}" >&2
+		fi
 	done <<<"${domains}"
 
+	echo ""
+	echo "================================"
 	echo "Disclaimer update completed."
+	echo "Total domains processed: ${domain_count}"
+	echo "Successfully configured: ${success_count}"
+	echo "================================"
 }
 
 # Main execution
 main() {
 	echo "================================"
-	echo "Zimbra Disclaimer Utility"
+	echo "Zimbra Disclaimer Utility v1.0.4"
 	echo "================================"
 	echo ""
 
@@ -82,19 +101,19 @@ main() {
 	echo "From Zimbra 8.5+, disclaimers are applied per domain."
 	echo ""
 
-	read -r -p "Continue? (yes/no) " -n 1 choice
+	read -r -p "Continue? (yes/no) " choice
 	echo ""
 
 	case "${choice}" in
-	y | Y)
+	y | Y | yes | s | S | sim)
 		add_disclaimers
 		;;
-	n | N)
+	n | N | no | nao)
 		echo "Operation cancelled."
 		exit 0
 		;;
 	*)
-		echo "Invalid choice."
+		echo "Invalid choice. Aborting."
 		exit 1
 		;;
 	esac

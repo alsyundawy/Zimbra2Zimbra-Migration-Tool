@@ -1,89 +1,147 @@
-        _                                _
-  __ _| |___ _   _ _   _ _ __   __| | __ _ _      ___   _
- / _` | / __| | | | | | | '_ \ / _` |/ _` \ \ /\ / / | | |
-| (_| | \__ \ |_| | |_| | | | | (_| | (_| |\ V  V /| |_| |
- \__,_|_|___/\__, |\__,_|_| |_|\__,_|\__,_| \_/\_/  \__, |  Z2Z - Version 1.0.3 - Maintained by alsyundawy
-             |___/                                  |___/
+# Z2Z Installation & Deployment Guide
 
-################################# Copyright (C) 2016-2026 Fabio Soares Schmidt, alsyundawy ########################
+Z2Z - Version 1.0.4 - Maintained by alsyundawy
+Copyright (C) 2016-2026 Fabio Soares Schmidt, alsyundawy
 
-DISTRIBUTED UNDER CREATIVE COMMONS LICENSE: Attribution-NonCommercial-ShareAlike (CC BY-NC-SA)
+## License Notice
 
-This license allows others to remix, adapt, and build upon the original work non-commercially, as long as they credit the CREATOR appropriately (original banner and Copyright) and license new creations under the SAME terms. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+Distributed under Creative Commons License: Attribution-NonCommercial-ShareAlike (CC BY-NC-SA 4.0).
+This license allows others to remix and build upon the original work non-commercially, as long as they credit the creator appropriately and license new creations under the same terms.
 
-#################################################################################################################################
+## Contact
 
- Contact:
+- **Maintainer**: alsyundawy
+- **Original Author**: Fabio Soares Schmidt `<fabio@respirandolinux.com.br>`
 
- Maintainer: alsyundawy
- Original Author: Fabio Soares Schmidt <fabio@respirandolinux.com.br>
+---
 
-#################################################################################################################################
+## Installation & Pre-Requisites
 
- *****  INSTALLATION  *****
+As a pure shell-based toolset, Z2Z does not require external compilation or package installations. It works out-of-the-box on POSIX Bash environments (Ubuntu 10.04–24.04, Debian 6–12, CentOS 5–9, RHEL 5–9, Rocky/AlmaLinux 8–9, and macOS/BSD for offline analysis).
 
-As a shell-based toolset, Z2Z does not require compilation or installation packages. Simply extract the repository contents, grant executable permissions, and run `./z2z.sh` as the `zimbra` user to begin the migration process:
+1. Clone or extract the repository onto the source Zimbra server:
 
-    su - zimbra
-    cd /path/to/Zimbra2Zimbra-Migration-Tool
-    chmod +x z2z.sh func.sh skell/importar_ldap.sh util/*.sh
-    ./z2z.sh
+   ```bash
+   git clone https://github.com/alsyundawy/Zimbra2Zimbra-Migration-Tool.git
+   cd Zimbra2Zimbra-Migration-Tool
+   ```
 
-The script will automatically check required dependencies and request user confirmation before starting any export procedures.
+2. Grant execution permissions to all scripts:
 
+   ```bash
+   chmod +x z2z.sh func.sh skell/importar_ldap.sh util/*.sh
+   ```
 
- *****  USAGE  *****
+3. Switch to the `zimbra` system user and execute the tool:
 
-# 1. Export Phase (Source Server)
+   ```bash
+   su - zimbra
+   cd /path/to/Zimbra2Zimbra-Migration-Tool
+   ./z2z.sh
+   ```
 
-Z2Z must be executed with the `zimbra` system user on the source server. Once confirmed, the tool will:
-1. Export Class of Service (COS), accounts, aliases, and distribution lists from LDAP into the `export/` directory.
-2. Preserve account details including passwords (when using internal authentication).
-3. Provide an interactive option to export or skip the ADMIN user account.
+The script will automatically validate execution context, check dependencies (`ldapsearch`, `zmmailbox`, `zmprov`), inspect single/multi-mailbox environments, and request user confirmation before performing export procedures.
 
-During account export, Zimbra internal system accounts are automatically excluded to prevent conflict with the target environment, such as:
- - Spam training accounts (spam.*)
- - Non-spam / Ham training accounts (ham.*)
- - Virus quarantine accounts (virus-*)
- - Global Address List sync accounts (galsync.*)
- - System resource accounts
+---
 
-The tool also allows interactively replacing the server hostname if the source and destination server hostnames differ.
+## End-to-End Migration Workflow
 
-Mailbox Data Export:
-Batch scripts are generated in the `export/` directory (`script_export_FULL.sh`, `script_export_TRASH.sh`, `script_export_JUNK.sh`). This allows administrators to customize their execution strategy (e.g., executing in parallel or in batches). Batch files use the native Zimbra `zmmailbox` utility with `-t 0` (no timeout) to reliably export:
- - Emails (preserving full folder hierarchy, tags, and flags)
- - Calendars & Appointments
- - Briefcase files
- - Tasks
- - User Preferences
+### Phase 1: Pre-Migration Discovery & Audit (Source Server)
 
-Trash and Junk/Spam folders are generated as separate batch files so administrators can choose whether or not to migrate them.
+Before initiating migration, run the built-in diagnostic utilities located in `util/`:
 
+1. Check storage footprint across all accounts:
 
-# 2. Import Phase (Destination Server)
+   ```bash
+   su - zimbra
+   ./util/mailbox_size.sh
+   ```
 
-To import data, copy the entire `export/` directory created by Z2Z on the source server over to the new destination server. All import steps must be executed as the `zimbra` user on the new server.
+2. Audit active email forwarding configurations:
 
-PREREQUISITE: You MUST manually create all target email domains on the destination server BEFORE starting the import.
+   ```bash
+   su - zimbra
+   ./util/audit_forwards.sh
+   ```
 
-Step A - LDAP Import:
-Run the `importar_ldap.sh` script located in the copied export directory:
+3. Audit shared folders and resource permissions:
 
-    su - zimbra
-    cd /path/to/export
-    ./importar_ldap.sh
+   ```bash
+   su - zimbra
+   ./util/audit_shares.sh
+   ```
 
-This script will verify file integrity, validate hostname consistency, clean default Class of Service entries, and import LDAP objects in the correct order (COS -> Accounts -> Aliases -> Distribution Lists). A session log (`session-<timestamp>.log`) will record the operations.
+### Phase 2: LDAP & Mailbox Export (Source Server)
 
-Step B - Mailbox Import:
-Import mailbox contents by executing the generated import script:
+Run `./z2z.sh` as the `zimbra` user. The export pipeline performs:
 
-    su - zimbra
-    cd /path/to/export
-    ./script_import_FULL.sh
+1. Export Email Domains from LDAP to `export/DOMINIOS.ldif` and generate `export/create_domains.sh`.
+2. Snapshot Global Configuration and MTA settings to `export/CONFIG_GLOBAL.ldif` and `export/global_settings_snapshot.txt`.
+3. Export Class of Service (COS) from LDAP to `export/COS.ldif`.
+4. Export User Accounts (excluding internal system accounts) to `export/CONTAS.ldif`. Passwords and internal hashes are preserved.
+5. High-speed atomic export of Mail Aliases to `export/APELIDOS.ldif`.
+6. Export Distribution Lists and Zimbra Groups to `export/LISTAS.ldif`.
+7. Interactive FQDN Hostname Replacement: If the destination server uses a different hostname, specify the new FQDN to automatically update all LDIF records.
+8. Interactive Mailbox Filter Configuration:
+   - Option 1: All non-system accounts (Default)
+   - Option 2: Active accounts only (`zimbraAccountStatus=active`)
+   - Option 3: Specific domain only
+9. Batch Mailbox Script Generation: Generates progress-aware batch scripts in `export/`:
+   - `script_export_FULL.sh` & `script_import_FULL.sh` (Complete mailbox archives via `zmmailbox getRestURL //?fmt=tgz`)
+   - `script_export_TRASH.sh` & `script_import_TRASH.sh` (Trash folder archives)
+   - `script_export_JUNK.sh` & `script_import_JUNK.sh` (Junk/Spam folder archives)
+10. Live Execution Prompt: Option to immediately start mailbox archiving in the current session.
 
-If you exported Trash and Junk folders and wish to import them, run the corresponding scripts AFTER the main mailbox import completes:
+### Phase 3: Transferring Data to Destination Server
 
-    ./script_import_TRASH.sh
-    ./script_import_JUNK.sh
+Transfer the entire `export/` directory (including `.ldif` files, `.tgz` mailbox archives, and import scripts) to the destination Zimbra server:
+
+```bash
+scp -r /path/to/export/ zimbra@destination-server:/tmp/export/
+```
+
+### Phase 4: Import & Provisioning (Destination Server)
+
+#### Step A - Import LDAP Directory Objects & Domains
+
+On the destination server as the `zimbra` user:
+
+```bash
+su - zimbra
+cd /tmp/export/
+./importar_ldap.sh
+```
+
+The script will:
+
+- Verify file readability and hostname parity with the new server.
+- Automatically import email domains (`DOMINIOS.ldif` / `create_domains.sh`).
+- Prompt whether to import or preserve the destination `admin` user account.
+- Remove default Zimbra COS entries and import custom COS definitions.
+- Import user accounts and distribution lists with detailed logging in `session-<timestamp>.log`.
+
+#### Step B - Import Mailbox Archives
+
+Import all user mailbox archives using the generated import script:
+
+```bash
+su - zimbra
+cd /tmp/export/
+./script_import_FULL.sh
+```
+
+Optionally import Trash and Junk archives:
+
+```bash
+./script_import_TRASH.sh
+./script_import_JUNK.sh
+```
+
+### Phase 5: Post-Migration Verification & System Finalization
+
+Execute health checks and permission repairs on the target host:
+
+- **Storage Verification**: Confirm quota parity by running `./util/mailbox_size.sh`.
+- **Delegation & Forwarding**: Inspect sharing tables using `./util/audit_forwards.sh` and `./util/audit_shares.sh`.
+- **Domain Disclaimers**: Configure mandatory legal notices using `./util/add_disclaimer.sh`.
+- **Permission Repair**: Enforce correct filesystem ownership via `/opt/zimbra/libexec/zmfixperms --extended` as `root`.

@@ -1,19 +1,36 @@
 # TODO
 
-- [x] Validate that new server hostname is a valid FQDN when replacing hostnames
-- [x] Verify destination server hostname (zmhostname) matches entries in LDAP files
-- [x] Handle ADMIN account import as an option, excluding default root and postmaster aliases
-- [x] Exclude system resource accounts from export (zimbraIsSystemResource:TRUE)
-- [x] Prevent timeouts on export/import of large mailboxes (>2GB) using `-t 0`
-- [x] Full English translation and updated ASCII banner
-- [ ] Implement session management for export operations
-- [ ] Improve LDAP connection variable using ldap_url or `zmprov gas ldap` instead of `ldap://$ZIMBRA_HOSTNAME`
-- [ ] Add option to automatically initiate mailbox data export immediately
-- [ ] Implement automated domain migration (v1.2)
-- [ ] Enhance documentation and guides
-- [ ] Add filter options for mailbox export: all, active-only, etc. (v1.2)
-- [ ] Support migration of external authentication and GAL configurations (test zimbraAuthMech) (v1.2)
-- [ ] Support migration of common global settings: relayhost, mynetworks, etc. (v1.2)
-- [ ] Add known Zimbra security checks and recommendations (v1.2)
-- [ ] Implement whiptail / dialog TUI menu interface (v2.0)
-- [ ] Implement shared folder and calendar permissions migration / repair (v2.0)
+## Completed Tasks
+
+- [x] Hostname FQDN syntax check (v0.9.9f)
+- [x] Verify destination server hostname matches directory records in exported LDIF files before ingestion (v1.0.0a)
+- [x] System alias protection toggle (v0.9.9c)
+- [x] Exclude internal Zimbra system accounts to protect target server defaults (v0.9.9)
+- [x] Unlimited timeout flag (`-t 0`) on large mailbox transfers (v1.0.0b)
+- [x] Distribution list query expansion with `zimbraGroup` support (v1.0.1)
+- [x] Multi-server environment detection warning (v1.0.2)
+- [x] Complete English console localization and updated banner (v1.0.3)
+- [x] Code hardening and static analysis compliance (v1.0.3)
+- [x] Single-pass atomic alias query replacing legacy iterative loops to cut export times on large installations from thirty minutes to seconds (v1.0.4)
+- [x] Universal LDAP URI resolver fallback via `zmlocalconfig` (v1.0.4)
+- [x] Anchored regex mailbox account filtering preventing false exclusions on legitimate usernames (v1.0.4)
+- [x] Portable in-place replacement (v1.0.4)
+- [x] Progress-aware timestamped batch mailbox export and import script generation with error tracking counters (v1.0.4)
+- [x] Mailbox size reporting and forwarding audit tools (v1.0.4)
+- [x] Dedicated session audit logging (v1.0.4)
+- [x] Automated domain export via `DOMINIOS.ldif` and companion script `create_domains.sh` for target provisioning (v1.0.4)
+- [x] Flexible mailbox filters (v1.0.4)
+- [x] Snapshot global MTA settings (v1.0.4)
+- [x] Immediate live export trigger (v1.0.4)
+- [x] Shared folders and calendar permissions audit utility `util/audit_shares.sh` (v1.0.4)
+
+## Pending Tasks
+
+- [ ] Webmail signatures and personas
+- [ ] Export and restore user Sieve mail filter rules from OpenLDAP attributes (`zimbraMailSieveScript`)
+- [ ] Out-of-Office responders
+- [ ] Export and provision calendar resources and equipment accounts (`zimbraCalResType`)
+- [ ] Incremental delta mailbox sync
+- [ ] Pre-flight DNS diagnostic utility to validate MX records and local resolvers
+- [ ] Parallel export orchestrator
+- [ ] Implement whiptail and dialog terminal interface for interactive menu navigation

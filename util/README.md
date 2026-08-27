@@ -2,26 +2,35 @@
 
 ## Overview
 
-This directory contains standalone utility scripts for Zimbra server maintenance.
+This directory contains standalone maintenance and diagnostic utilities for Zimbra Collaboration servers.
 
 ## Quickstart
 
-Run a utility script directly with Zimbra privileges:
+Run a utility script directly with appropriate `zimbra` or `root` privileges:
 
 ```bash
 su - zimbra
 cd util/
 ./mailbox_size.sh
+./audit_forwards.sh
+./audit_shares.sh
 ```
 
 ## Dependencies
 
-- Zimbra Collaboration Server
-- User privileges: `zimbra` or `root` (for disclaimer configuration)
+- Zimbra Collaboration Server CLI tools (`zmprov`, `zmmailbox`)
+- User privileges: `zimbra` (for reports) or `root` (for disclaimer management)
 
 ## Configuration
 
-Disclaimer text files are read from `/opt/zimbra/postfix/conf/disclaimer.{txt,html}`.
+Utilities read server-wide configurations dynamically from Zimbra environment tools (`zmsetvars` and `zmlocalconfig`).
+
+## Available Utilities
+
+- `mailbox_size.sh`: Generates storage consumption reports across all active mailboxes (Bytes to TB).
+- `audit_forwards.sh`: Audits administrative and user-preference forwarding rules.
+- `audit_shares.sh`: Discovers and audits shared folders and permissions across mailboxes.
+- `add_disclaimer.sh`: Configures per-domain legal disclaimers and signatures (ZCS 8.5+).
 
 ## Running Tests
 

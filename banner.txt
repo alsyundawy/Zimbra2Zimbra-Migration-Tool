@@ -2,14 +2,14 @@
   __ _| |___ _   _ _   _ _ __   __| | __ _ _      ___   _
  / _` | / __| | | | | | | '_ \ / _` |/ _` \ \ /\ / / | | |
 | (_| | \__ \ |_| | |_| | | | | (_| | (_| |\ V  V /| |_| |
- \__,_|_|___/\__, |\__,_|_| |_|\__,_|\__,_| \_/\_/  \__, |  Z2Z - Version 1.0.3 - Maintained by alsyundawy
+ \__,_|_|___/\__, |\__,_|_| |_|\__,_|\__,_| \_/\_/  \__, |  Z2Z - Version 1.0.4 - Maintained by alsyundawy
              |___/                                  |___/
 
 #################################################################################################################################
 
  Z2Z is a migration tool for Zimbra environments with the following features:
 
- - Migration between Zimbra servers, regardless of version or edition (Open Source/Network)
+ - Migration between Zimbra servers, regardless of version or edition (Open Source/Network/Carbonio)
  - Allows replacing the server hostname during the process
  - Exports Class of Service (COS), user accounts, aliases, plus distribution lists
 

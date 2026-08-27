@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains template scripts and banners copied into the `export/` directory during execution.
+This directory contains template provisioning scripts and terminal banners that are copied into the `export/` staging directory during execution.
 
 ## Quickstart
 
@@ -14,16 +14,17 @@ chmod +x skell/importar_ldap.sh
 
 ## Dependencies
 
-- Zimbra Collaboration Server
+- Zimbra Collaboration Server (ZCS 7.x – 10.1.x, Carbonio CE/FOSS)
 - OpenLDAP client binaries (`ldapadd`, `ldapdelete`, `ldapsearch`)
+- Bash shell (4.1+)
 
 ## Configuration
 
-Templates are configured at runtime when copied into the `export/` directory.
+Templates are dynamically configured at runtime when staged into the `export/` directory.
 
 ## Running Tests
 
-Verify syntax of template scripts:
+Verify syntax across template scripts:
 
 ```bash
 bash -n skell/importar_ldap.sh

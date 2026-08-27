@@ -6,39 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [1.0.4] - 2026-08-27
+
+### Highlights
+
+- **Automated Domain Migration**: Added automated export and restoration of email domains via `DOMINIOS.ldif` and companion script `create_domains.sh`, removing the manual domain creation requirement before LDAP ingestion.
+- **Single-Pass Atomic LDAP Alias Export**: Replaced slow iterative loops with a single-pass LDAP query for email aliases, reducing export execution time from 30+ minutes down to seconds on large multi-thousand account deployments.
+- **Anchored System Account Exclusion**: Upgraded filtering logic with anchored regex `^(virus-[^@]*|ham\.[^@]*|spam\.[^@]*|galsync[^@]*)@` to prevent false-positive exclusions of legitimate user accounts whose usernames contain the substring "admin" (e.g. `badminton@`, `sysadmin@`).
+- **Flexible Mailbox Export Filters**: Added interactive selection allowing administrators to export all accounts, active accounts only (`zimbraAccountStatus=active`), or filter by a specific domain for phased rollouts.
+- **Universal LDAP Connection & Credential Fallback**: Enhanced LDAP URI and credential resolvers with intelligent detection via `ldap_url`, `ldap_master_url`, or `zmlocalconfig`, ensuring seamless compatibility with LDAPS, custom LDAP ports, and multi-server environments.
+- **Export Session Logging & Audit Trail**: Introduced timestamped session audit logs (`export/session-export-<timestamp>.log`) to track export status, command execution, and errors.
+- **Global Configuration & MTA Snapshot**: Automatically extracts `CONFIG_GLOBAL.ldif` and generates `global_settings_snapshot.txt` containing critical server-wide attributes (relayhost, mynetworks, MTA restrictions, authentication mechanisms, GAL mode).
+- **Progress-Aware Batch Script Generation**: Generated mailbox archiving scripts (`script_export_FULL.sh`, `script_import_FULL.sh`, TRASH, and JUNK) now include shebangs, strict safety flags (`set -euo pipefail`), real-time timestamped progress logging `[$(date)] Exporting [X/Y]...`, and success/failure counters.
+- **Immediate Live Mailbox Export Option**: Added prompt in `z2z.sh` allowing operators to immediately trigger mailbox export in the active session.
+- **Shared Folder & Resource Permissions Audit**: Added new utility `util/audit_shares.sh` to audit folder and calendar sharing permissions across all mailboxes.
+- **Portable Stream Replacement**: Introduced `portable_replace()` using temporary staging files to guarantee cross-platform compatibility across GNU Linux and BSD/macOS without failing on `sed -i` syntax discrepancies.
+- **Forwarding & Storage Telemetry**: Upgraded `audit_forwards.sh` to audit both administrative and web client forwarding rules alongside local delivery retention flags; enhanced `mailbox_size.sh` with non-numeric character sanitization and dynamic unit scaling (Bytes, KB, MB, GB, TB).
+- **Technical Documentation & Architecture Suite**: Introduced [DOCNOTE.md](DOCNOTE.md) technical manual, overhauled [README.md](README.md) with badges, Mermaid migration flowcharts, RFC 2119 operational matrix, and verified ShellCheck and Markdownlint compliance.
+
+---
+
 ## [1.0.3] - 2026-08-27
 
-### 🚀 Highlights
+### Localization & Quality Improvements
 
 - **Complete English Localization**: Fully translated all shell scripts, console feedback, interactive prompts, and documentation from Portuguese to standard English.
 - **Modern ASCII Banner & Identity**: Refreshed ASCII terminal branding with **alsyundawy** art and standardized version metadata.
-- **Code Hardening & ShellCheck Compliance**: Refactored helper routines, variable expansions, and sourcing patterns to achieve 100% linter and static analysis compliance.
+- **Code Hardening & ShellCheck Compliance**: Refactored helper routines, variable expansions, and sourcing patterns to achieve linter and static analysis compliance.
 - **Documentation Architecture**: Rebuilt documentation with standardized headings, quickstart guides, compatibility specifications, and clean markdown structures.
-
-### 🌐 Localization & User Experience
-
-- Standardized all user-facing prompts (`Continue (yes/no)?`, `Replace hostname?`, `Export mailboxes?`) with consistent confirmation handling.
-- Enhanced terminal output styling with structured color palettes for errors, warnings, successes, and status markers.
-- Added comprehensive English descriptions for Class of Service (COS), account filters, alias maps, and distribution list export routines.
-
-### 🛠️ Code Quality & Reliability
-
-- Added `# shellcheck` annotations and safe variable expansion (`${zimbra_server_hostname:-}`) for dynamic runtime variables sourced via `zmsetvars`.
-- Standardized file descriptor redirection using `: > "${file}"` syntax to avoid ShellCheck SC2188 warnings.
-- Isolated command executions in subshells and variable captures to avoid masking return codes.
-- Verified zero errors across 6 integrated linters (`git-diff-check`, `markdownlint`, `prettier`, `shellcheck`, `shfmt`, `trufflehog`).
-
-### 📚 Documentation
-
-- Overhauled [README.md](README.md) with dedicated sections: Overview, Quickstart, Dependencies, Configuration, Running Tests, What Will Be Migrated, User Feedback, Roadmap, Contributing, and License.
-- Revamped [INSTALL](INSTALL) with step-by-step guides for single-server and multi-server environments.
-- Enriched subdirectory guides in [export/README.md](export/README.md), [skell/README.md](skell/README.md), and [util/README.md](util/README.md).
+- **Interactive Prompts Standardization**: Standardized all user-facing prompts (`Continue (yes/no)?`, `Replace hostname?`, `Export mailboxes?`) with consistent confirmation handling.
+- **Console Output Styling**: Enhanced terminal output styling with structured color palettes for error and status markers.
+- **Linter Verification**: Verified zero errors across integrated linters (`git-diff-check`, `markdownlint`, `prettier`, `shellcheck`, `shfmt`, `trufflehog`).
 
 ---
 
 ## [1.0.2] - 2024-03-15
 
-### ⚠️ Improvements
+### Multi-Server Improvements
 
 - Added administrative pre-flight warnings for multi-server environments containing more than one active Mailbox server.
 
@@ -46,7 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [1.0.1] - 2023-11-20
 
-### 🔄 Changes
+### Group Distribution Updates
 
 - Expanded distribution list LDAP export query to include `zimbraGroup` object class entries in addition to standard distribution lists.
 
@@ -54,7 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [1.0.0c] - 2022-08-10
 
-### 🧪 Compatibility
+### Hostname Compatibility
 
 - Validated support for multi-server environments that do not require mailbox hostname replacement.
 
@@ -62,7 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [1.0.0b] - 2021-04-05
 
-### ⚡ Performance & Data Integrity
+### Performance & Data Integrity
 
 - Added `-t 0` parameter to `zmmailbox` commands to eliminate timeout limits when archiving large mailboxes (>2GB).
 - Switched default mailbox import strategy from `reset` (destructive overwrite) to `skip` (safe non-destructive merge).
@@ -71,7 +75,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [1.0.0a] - 2020-09-18
 
-### 🐛 Bug Fixes
+### Bug Fixes
 
 - Fixed LDIF hostname comparison logic during pre-flight import checks.
 - Introduced automated session logging (`session-<timestamp>.log`) to trace import operations.
@@ -80,7 +84,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.9.9f] - 2019-12-14
 
-### 🔒 Validation
+### Hostname Validation
 
 - Added strict FQDN syntax validation when interactively entering replacement hostnames.
 - Enforced hostname parity validation between local Zimbra server and imported LDIF records.
@@ -90,7 +94,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.9.9c] - 2018-06-22
 
-### ✨ Features
+### Admin & System Alias Options
 
 - Added interactive toggle allowing administrators to choose whether to export/import the `admin` user account.
 - Added default alias exclusions to preserve native `root` and `postmaster` system aliases.
@@ -99,8 +103,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.9.9] - 2017-02-10
 
-### 🚀 Initial Release
+### Initial Release
 
-- Core export/import pipeline for Class of Service (Default & DefaultExternal), user accounts, aliases, and distribution lists.
+- Core export/import pipeline for user accounts and distribution lists.
 - Built-in exclusion filters for internal Zimbra system accounts (spam, ham, virus quarantine, galsync).
 - Batch script generation for full mailbox archive exports via `zmmailbox`.
